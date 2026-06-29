@@ -224,4 +224,15 @@ with col_map:
 # ==============================================================================
 with col_table:
     header = "<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px;'>Impacted List (DANE)</div>"
-    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px
+    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px;'>"
+    
+    if not muni_list_data.empty:
+        rows = "".join([
+            f"<div style='border-bottom: 1px solid #eee; padding: 4px 0;'><small style='color:#777;'>[{int(row['Municipality_Code_DANE'])}]</small> {row['Municipality_Name_DANE']}</div>" 
+            for _, row in muni_list_data.iterrows()
+        ])
+        content += rows
+    else: 
+        content += "<p style='color: #999; text-align: center; margin-top: 20px;'>No data.</p>"
+        
+    st.markdown(header + content + "</div>", unsafe_allow_html=True)
