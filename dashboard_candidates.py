@@ -201,4 +201,40 @@ with col_map:
     gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
     
     if not impacted_muni.empty: 
-        impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black',
+        impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
+        
+    if not filtered_roads.empty: 
+        filtered_roads.plot(ax=ax_map, color='#5dade2', linewidth=0.8, alpha=0.5)
+        
+    if not gdf_complete.empty: 
+        gdf_complete.plot(ax=ax_map, color='#cb4335', linewidth=1.5)
+    
+    for spine in ax_map.spines.values(): 
+        spine.set_visible(True)
+        spine.set_color('#1a5276')
+        spine.set_linewidth(2.0)
+        
+    ax_map.set_xticks([])
+    ax_map.set_yticks([])
+    ax_map.set_xlim([-79.5, -66.5])
+    ax_map.set_ylim([-4.5, 13.5])
+    
+    st.pyplot(fig_map, use_container_width=True)
+
+# ==============================================================================
+# SECTION 8: SCROLLABLE DATA TABLE RENDERING (col_table)
+# ==============================================================================
+with col_table:
+    header = "<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px;'>Impacted List (DANE)</div>"
+    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px;'>"
+    
+    if not muni_list_data.empty:
+        rows = "".join([
+            f"<div style='border-bottom: 1px solid #eee; padding: 4px 0;'><small style='color:#777;'>[{int(row['Municipality_Code_DANE'])}]</small> {row['Municipality_Name_DANE']}</div>" 
+            for _, row in muni_list_data.iterrows()
+        ])
+        content += rows
+    else: 
+        content += "<p style='color: #999; text-align: center; margin-top: 20px;'>No data.</p>"
+        
+    st.markdown(header + content + "</div>", unsafe_allow_html=True)
