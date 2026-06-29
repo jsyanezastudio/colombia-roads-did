@@ -135,23 +135,21 @@ with col_control:
         unsafe_allow_html=True
     )
 
-    # --- DYNAMIC YEAR OF OPERATION CARD ---
-    # This card now extracts and automatically displays active years dynamically
+    # --- DYNAMIC YEAR OF OPERATION CARD (HIDDEN IN YEAR TAB) ---
+    # Purpose: Only displays the project's operation years if the user is in the 'Project' tab.
     if is_project_mode:
         active_years = sorted(filtered_roads['oper_year'].dropna().unique().astype(int))
         years_str = ", ".join(map(str, active_years)) if active_years else "All / NA"
-    else:
-        years_str = str(val_year)
-
-    st.markdown(
-        f"""
-        <div style='text-align:center; padding: 10px; background: #ebf5fb; border: 1px dashed #1a5276; border-radius: 8px; margin-bottom: 15px; font-family: monospace;'>
-            <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Year of Operation</span><br>
-            <span style='font-size: 14px; color: #1a5276; font-weight: bold;'>{years_str}</span>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+        
+        st.markdown(
+            f"""
+            <div style='text-align:center; padding: 10px; background: #ebf5fb; border: 1px dashed #1a5276; border-radius: 8px; margin-bottom: 15px; font-family: monospace;'>
+                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Year of Operation</span><br>
+                <span style='font-size: 14px; color: #1a5276; font-weight: bold;'>{years_str}</span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
     # --- MAP LEGEND COMPONENT ---
     st.markdown(
@@ -226,15 +224,4 @@ with col_map:
 # ==============================================================================
 with col_table:
     header = "<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px;'>Impacted List (DANE)</div>"
-    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px;'>"
-    
-    if not muni_list_data.empty:
-        rows = "".join([
-            f"<div style='border-bottom: 1px solid #eee; padding: 4px 0;'><small style='color:#777;'>[{int(row['Municipality_Code_DANE'])}]</small> {row['Municipality_Name_DANE']}</div>" 
-            for _, row in muni_list_data.iterrows()
-        ])
-        content += rows
-    else: 
-        content += "<p style='color: #999; text-align: center; margin-top: 20px;'>No data.</p>"
-        
-    st.markdown(header + content + "</div>", unsafe_allow_html=True)
+    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px
