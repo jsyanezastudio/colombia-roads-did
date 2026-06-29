@@ -86,24 +86,25 @@ st.markdown(
 col_control, col_map, col_table = st.columns([20, 55, 25])
 
 # ==============================================================================
-# SECTION 6: SIDE PANEL CONTROLS & DATA FILTERING LOGIC
-# Purpose: Handles dropdown states and filters target data arrays sequentially.
+# SECTION 6: SIDE PANEL CONTROLS & CROSS-FILTER RESET LOGIC
+# Purpose: Manages a unified mode selector via interactive Streamlit Radio/Tabs 
+#          to guarantee that filters do not overlap or conflict.
 # ==============================================================================
 with col_control:
-    tab_project, tab_year = st.tabs(['Project', 'Year'])
+    # We use a radio selector styled cleanly to toggle the active filter mode.
+    # This prevents the overlapping values from 'Project' and 'Year' tabs.
+    filter_mode = st.radio("Filter Analysis By:", ['Project', 'Year'], horizontal=True)
+    
     val_proj = "All"
     val_year = "All"
-    is_project_mode = True
+    is_project_mode = (filter_mode == 'Project')
 
-    with tab_project:
+    if is_project_mode:
         val_proj = st.selectbox('Select Project:', options=unique_projects, key="proj_select")
-        
-    with tab_year:
+    else:
         val_year = st.selectbox('Select Operation Year:', options=years_list, key="year_select")
-        if val_year != "All":
-            is_project_mode = False
 
-    # Apply data filtering based on the active selection tab
+    # Apply data filtering based on the active selection mode
     filtered_roads = gdf_compiled.copy()
     if is_project_mode:
         if val_proj != 'All':
@@ -136,7 +137,6 @@ with col_control:
     )
 
     # --- DYNAMIC YEAR OF OPERATION CARD (HIDDEN IN YEAR TAB) ---
-    # Purpose: Only displays the project's operation years if the user is in the 'Project' tab.
     if is_project_mode:
         active_years = sorted(filtered_roads['oper_year'].dropna().unique().astype(int))
         years_str = ", ".join(map(str, active_years)) if active_years else "All / NA"
@@ -167,11 +167,10 @@ with col_control:
 
     # ==============================================================================
     # SECTION 6.1: PIE CHARTS GENERATION
-    # Purpose: Generates and draws the matplotlib figure directly inside col_control.
     # ==============================================================================
-    st.write("") # Spacer
+    st.write("") 
     fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
-    fig_pies.patch.set_facecolor('none') # Transparent background to match Streamlit's theme
+    fig_pies.patch.set_facecolor('none') 
     
     # Pie 1: vs National Total
     ax1.pie([selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)], 
