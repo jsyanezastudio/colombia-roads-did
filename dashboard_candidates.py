@@ -103,6 +103,7 @@ with col_control:
         if val_year != "All":
             is_project_mode = False
 
+    # Apply data filtering based on the active selection tab
     filtered_roads = gdf_compiled.copy()
     if is_project_mode:
         if val_proj != 'All':
@@ -134,6 +135,24 @@ with col_control:
         unsafe_allow_html=True
     )
 
+    # --- DYNAMIC YEAR OF OPERATION CARD ---
+    # This card now extracts and automatically displays active years dynamically
+    if is_project_mode:
+        active_years = sorted(filtered_roads['oper_year'].dropna().unique().astype(int))
+        years_str = ", ".join(map(str, active_years)) if active_years else "All / NA"
+    else:
+        years_str = str(val_year)
+
+    st.markdown(
+        f"""
+        <div style='text-align:center; padding: 10px; background: #ebf5fb; border: 1px dashed #1a5276; border-radius: 8px; margin-bottom: 15px; font-family: monospace;'>
+            <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Year of Operation</span><br>
+            <span style='font-size: 14px; color: #1a5276; font-weight: bold;'>{years_str}</span>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
     # --- MAP LEGEND COMPONENT ---
     st.markdown(
         """
@@ -150,8 +169,7 @@ with col_control:
 
     # ==============================================================================
     # SECTION 6.1: PIE CHARTS GENERATION
-    # Purpose: Replaces the 'output_pies' widget container from IPython.
-    #          Generates and draws the matplotlib figure directly inside col_control.
+    # Purpose: Generates and draws the matplotlib figure directly inside col_control.
     # ==============================================================================
     st.write("") # Spacer
     fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
@@ -183,40 +201,4 @@ with col_map:
     gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
     
     if not impacted_muni.empty: 
-        impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
-        
-    if not filtered_roads.empty: 
-        filtered_roads.plot(ax=ax_map, color='#5dade2', linewidth=0.8, alpha=0.5)
-        
-    if not gdf_complete.empty: 
-        gdf_complete.plot(ax=ax_map, color='#cb4335', linewidth=1.5)
-    
-    for spine in ax_map.spines.values(): 
-        spine.set_visible(True)
-        spine.set_color('#1a5276')
-        spine.set_linewidth(2.0)
-        
-    ax_map.set_xticks([])
-    ax_map.set_yticks([])
-    ax_map.set_xlim([-79.5, -66.5])
-    ax_map.set_ylim([-4.5, 13.5])
-    
-    st.pyplot(fig_map, use_container_width=True)
-
-# ==============================================================================
-# SECTION 8: SCROLLABLE DATA TABLE RENDERING (col_table)
-# ==============================================================================
-with col_table:
-    header = "<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px;'>Impacted List (DANE)</div>"
-    content = "<div style='height: 680px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white; font-family: monospace; font-size: 11px;'>"
-    
-    if not muni_list_data.empty:
-        rows = "".join([
-            f"<div style='border-bottom: 1px solid #eee; padding: 4px 0;'><small style='color:#777;'>[{int(row['Municipality_Code_DANE'])}]</small> {row['Municipality_Name_DANE']}</div>" 
-            for _, row in muni_list_data.iterrows()
-        ])
-        content += rows
-    else: 
-        content += "<p style='color: #999; text-align: center; margin-top: 20px;'>No data.</p>"
-        
-    st.markdown(header + content + "</div>", unsafe_allow_html=True)
+        impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black',
