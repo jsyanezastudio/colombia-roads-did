@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 # ==============================================================================
 st.set_page_config(
     page_title="Colombia Road Infrastructure Dashboard",
-    page_icon="🇨🇴",
     layout="wide"
 )
 
@@ -23,7 +22,7 @@ def load_data():
     gdf_roads = gpd.read_file(GEOJSON_PATH)
     gdf_muni = gpd.read_file(MUNICIPALITIES_PATH)
     
-    # Process dates for DiD Analysis (Section 2)
+    # Process dates for DiD Analysis
     for col in ['pre_date', 'start_date', 'oper_date']:
         gdf_roads[col] = pd.to_datetime(gdf_roads[col], errors='coerce', dayfirst=True)
     gdf_roads['oper_year'] = gdf_roads['oper_date'].dt.year
@@ -31,6 +30,35 @@ def load_data():
     if gdf_muni.crs != gdf_roads.crs:
         gdf_muni = gdf_muni.to_crs(gdf_roads.crs)
         
+    # Map id_type from roads to municipalities to ensure proper rendering in Section 1
+    if 'id_type' in gdf_roads.columns and 'Municipality_Code_DANE' in gdf_roads.columns:
+        # Create a mapping dictionary based on the hierarchical priority setup
+        # If a municipality has multiple rows, we sort to preserve the highest priority (Doble)
+        road_mapping = gdf_roads.copy()
+        road_mapping['id_type_cat'] = pd.Categorical(
+            road_mapping['id_type'], 
+            categories=['Doble', 'Sencilla', 'Por Definir', 'No Especificado / Otro', 'Sin vías'], 
+            ordered=True
+        )
+        road_mapping = road_mapping.sort_values('id_type_cat').drop_duplicates(subset=['Municipality_Code_DANE'])
+        mapping_dict = pd.series(road_mapping.id_type.values, index=road_mapping.Municipality_Code_DANE).to_dict()
+        
+        # Assign the mapped values to the municipalities dataframe
+        muni_code_col = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_muni.columns else gdf_muni.columns[0]
+        gdf_muni['id_type'] = gdf_muni[muni_code_col].map(mapping_dict).fillna('Sin vías')
+    elif 'id_type' in gdf_roads.columns and 'Municipality_Code_Dane' in gdf_roads.columns:
+        road_mapping = gdf_roads.copy()
+        road_mapping['id_type_cat'] = pd.Categorical(
+            road_mapping['id_type'], 
+            categories=['Doble', 'Sencilla', 'Por Definir', 'No Especificado / Otro', 'Sin vías'], 
+            ordered=True
+        )
+        road_mapping = road_mapping.sort_values('id_type_cat').drop_duplicates(subset=['Municipality_Code_Dane'])
+        mapping_dict = pd.series(road_mapping.id_type.values, index=road_mapping.Municipality_Code_Dane).to_dict()
+        
+        muni_code_col = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_muni.columns else gdf_muni.columns[0]
+        gdf_muni['id_type'] = gdf_muni[muni_code_col].map(mapping_dict).fillna('Sin vías')
+
     return gdf_roads, gdf_muni
 
 gdf_compiled, gdf_municipalities = load_data()
@@ -41,7 +69,7 @@ ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", pr
 TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
 
 # ==============================================================================
-# SECTION 3: FILTER CONTROLS DICTIONARY GENERATION (For Section 2)
+# SECTION 3: FILTER CONTROLS DICTIONARY GENERATION
 # ==============================================================================
 @st.cache_data
 def get_sorted_filters(_gdf_r, _gdf_m):
@@ -81,14 +109,14 @@ col_control, col_map, col_right = st.columns([20, 55, 25])
 # SECTION 6: SIDE PANEL CONTROLS (UPPER & LOWER BLOCKS)
 # ==============================================================================
 with col_control:
-    st.markdown("### 🗂️ Main Menu")
+    st.markdown("### Main Menu")
     main_menu = st.selectbox(
         "Select View Module:",
         options=["1. Colombia Roads", "2. DiD Candidates", "3. City Data Exploration"]
     )
     
     st.markdown("---")
-    st.markdown("### 🎛️ Dynamic Filters")
+    st.markdown("### Dynamic Filters")
 
     # --- LOGIC FOR MODULE 1 ---
     if main_menu == "1. Colombia Roads":
@@ -107,6 +135,52 @@ with col_control:
             val_proj = st.selectbox('Select Project:', options=unique_projects, key="proj_select")
         else:
             val_year = st.selectbox('Select Operation Year:', options=years_list, key="year_select")
+
+        # Data filtering calculation logic to feed the maps and summary cards
+        filtered_roads = gdf_compiled.copy()
+        if is_project_mode:
+            if val_proj != 'All':
+                filtered_roads = filtered_roads[filtered_roads['PROYECTO'] == val_proj]
+        else:
+            if val_year != 'All':
+                filtered_roads = filtered_roads[filtered_roads['oper_year'] == val_year]
+
+        gdf_complete = filtered_roads.dropna(subset=['pre_date', 'start_date', 'oper_date'])
+        impacted_muni = gpd.GeoDataFrame()
+        muni_list_data = pd.DataFrame()
+
+        if not gdf_complete.empty:
+            hits = gpd.sjoin(gdf_municipalities, gdf_complete, how="inner", predicate="intersects")
+            if not hits.empty:
+                impacted_muni = gdf_municipalities.loc[hits.index.unique()]
+                muni_list_data = impacted_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
+
+        selected_count = len(muni_list_data)
+
+        # KPI Summary Card
+        st.markdown(
+            f"""
+            <div style='text-align:center; padding: 10px; background: white; border: 2px solid #1a5276; border-radius: 8px; margin-top: 15px; margin-bottom: 10px; font-family: monospace;'>
+                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Total Municipalities</span><br>
+                <span style='font-size: 24px; color: #1a5276; font-weight: bold;'>{selected_count}</span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
+        # Dynamic Year Card restored for Project selection mode
+        if is_project_mode:
+            active_years = sorted(filtered_roads['oper_year'].dropna().unique().astype(int))
+            years_str = ", ".join(map(str, active_years)) if active_years else "All / NA"
+            st.markdown(
+                f"""
+                <div style='text-align:center; padding: 10px; background: #ebf5fb; border: 1px dashed #1a5276; border-radius: 8px; margin-bottom: 15px; font-family: monospace;'>
+                    <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Year of Operation</span><br>
+                    <span style='font-size: 14px; color: #1a5276; font-weight: bold;'>{years_str}</span>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
 
     # --- LOGIC FOR MODULE 3 ---
     elif main_menu == "3. City Data Exploration":
@@ -135,24 +209,6 @@ with col_map:
                 muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
 
     elif main_menu == "2. DiD Candidates":
-        filtered_roads = gdf_compiled.copy()
-        if is_project_mode:
-            if val_proj != 'All':
-                filtered_roads = filtered_roads[filtered_roads['PROYECTO'] == val_proj]
-        else:
-            if val_year != 'All':
-                filtered_roads = filtered_roads[filtered_roads['oper_year'] == val_year]
-
-        gdf_complete = filtered_roads.dropna(subset=['pre_date', 'start_date', 'oper_date'])
-        impacted_muni = gpd.GeoDataFrame()
-        muni_list_data = pd.DataFrame()
-
-        if not gdf_complete.empty:
-            hits = gpd.sjoin(gdf_municipalities, gdf_complete, how="inner", predicate="intersects")
-            if not hits.empty:
-                impacted_muni = gdf_municipalities.loc[hits.index.unique()]
-                muni_list_data = impacted_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
-
         if not impacted_muni.empty: 
             impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
         if not filtered_roads.empty: 
@@ -180,7 +236,7 @@ with col_right:
     if main_menu == "1. Colombia Roads" and 'id_type' in gdf_municipalities.columns:
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Infrastructure Breakdown</div>", unsafe_allow_html=True)
         
-        # Calculate counts based on 'id_type' column
+        # Calculate counts based on mapped 'id_type' column
         count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
         count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
         count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
@@ -194,7 +250,6 @@ with col_right:
                 labels=['With Roads', 'No Roads'], autopct='%1.1f%%', 
                 colors=['#f4d03f', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
-                
         ax1.set_title("Road Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         # Pie 2: Dual Carriageways vs Total Municipalities with Roads
@@ -208,9 +263,7 @@ with col_right:
         st.pyplot(fig_pies, use_container_width=True)
 
     elif main_menu == "2. DiD Candidates":
-        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
-        
-        selected_count = len(muni_list_data) if 'muni_list_data' in locals() else 0
+        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
         
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none') 
