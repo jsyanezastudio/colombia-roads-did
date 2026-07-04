@@ -74,6 +74,12 @@ TOTAL_MUNI_COUNT = len(gdf_municipalities)
 ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
 TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
 
+# Funciones helper para mostrar valores absolutos en los gráficos de torta
+def absolute_value_format(val, allvals):
+    import numpy as np
+    a = int(np.round(val/100.*sum(allvals)))
+    return f"{a:d} Muni."
+
 # ==============================================================================
 # SECTION 3: FILTER CONTROLS DICTIONARY GENERATION
 # ==============================================================================
@@ -196,7 +202,11 @@ with col_control:
 # SECTION 7: GEOSPATIAL MAP PLOTTING GENERATION (col_map)
 # ==============================================================================
 with col_map:
-    fig_map, ax_map = plt.subplots(figsize=(9, 11))
+    # Ajuste dinámico de tamaño para la sección 3 (Mapa más pequeño)
+    if main_menu == "3. City Data Exploration":
+        fig_map, ax_map = plt.subplots(figsize=(5, 6))
+    else:
+        fig_map, ax_map = plt.subplots(figsize=(9, 11))
     
     # Render base background
     gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
@@ -251,16 +261,18 @@ with col_right:
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none')
         
-        # Pie 1: Municipalities with Roads vs National Total
-        ax1.pie([count_any_roads, max(0.1, count_no_roads)], 
-                labels=['With Roads', 'No Roads'], autopct='%1.1f%%', 
+        # Pie 1: Municipalities with Roads vs National Total (Valores Absolutos)
+        v1 = [count_any_roads, max(0.1, count_no_roads)]
+        ax1.pie(v1, labels=['With Roads', 'No Roads'], 
+                autopct=lambda pct: absolute_value_format(pct, v1), 
                 colors=['#f4d03f', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("Road Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Pie 2: Dual Carriageways vs Total Municipalities with Roads
-        ax2.pie([count_doble_roads, max(0.1, count_other_roads)], 
-                labels=['Dual (Doble)', 'Other Types'], autopct='%1.1f%%', 
+        # Pie 2: Dual Carriageways vs Total Municipalities with Roads (Valores Absolutos)
+        v2 = [count_doble_roads, max(0.1, count_other_roads)]
+        ax2.pie(v2, labels=['Dual (Doble)', 'Other Types'], 
+                autopct=lambda pct: absolute_value_format(pct, v2), 
                 colors=['#27ae60', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax2.set_title("Dual Carriageways vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
@@ -269,27 +281,45 @@ with col_right:
         st.pyplot(fig_pies, use_container_width=True)
 
     elif main_menu == "2. DiD Candidates":
-        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
         
-        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
+        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 4.5))
         fig_pies.patch.set_facecolor('none') 
         
-        # Pie 1: Selected vs National Total
-        ax1.pie([selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)], 
-                labels=['Selected', 'Other'], autopct='%1.1f%%', 
+        # Pie 1: Selected vs National Total (Valores Absolutos)
+        v3 = [selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)]
+        ax1.pie(v3, labels=['Selected', 'Other'], 
+                autopct=lambda pct: absolute_value_format(pct, v3), 
                 colors=['#1a5276', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Pie 2: Selected vs Road Network Total
-        ax2.pie([selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)], 
-                labels=['Selected', 'Other'], autopct='%1.1f%%', 
+        # Pie 2: Selected vs Road Network Total (Valores Absolutos)
+        v4 = [selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)]
+        ax2.pie(v4, labels=['Selected', 'Other'], 
+                autopct=lambda pct: absolute_value_format(pct, v4), 
                 colors=['#d4e6f1', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax2.set_title("vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
+        
+        # Lista de Municipios reincorporada abajo de las tortas estadísticas
+        st.markdown("---")
+        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Impacted Municipalities List</div>", unsafe_allow_html=True)
+        if not muni_list_data.empty:
+            st.dataframe(
+                muni_list_data.rename(columns={
+                    'Municipality_Code_DANE': 'Code',
+                    'Municipality_Name_DANE': 'Name'
+                }),
+                hide_index=True,
+                use_container_width=True,
+                height=250
+            )
+        else:
+            st.info("No municipalities found for this selection.")
         
     else:
         st.markdown("<div style='color: #999; text-align: center; margin-top: 20px; font-family: monospace;'>No active visuals.</div>", unsafe_allow_html=True)
