@@ -213,4 +213,24 @@ with col_right:
         selected_count = len(muni_list_data) if 'muni_list_data' in locals() else 0
         
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
-        fig_pies.
+        fig_pies.patch.set_facecolor('none') 
+        
+        # Pie 1: Selected vs National Total
+        ax1.pie([selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)], 
+                labels=['Selected', 'Other'], autopct='%1.1f%%', 
+                colors=['#1a5276', '#eeeeee'], startangle=90, 
+                textprops={'fontsize': 8, 'family': 'monospace'})
+        ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        
+        # Pie 2: Selected vs Road Network Total
+        ax2.pie([selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)], 
+                labels=['Selected', 'Other'], autopct='%1.1f%%', 
+                colors=['#d4e6f1', '#eeeeee'], startangle=90, 
+                textprops={'fontsize': 8, 'family': 'monospace'})
+        ax2.set_title("vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        
+        plt.tight_layout()
+        st.pyplot(fig_pies, use_container_width=True)
+        
+    else:
+        st.markdown("<div style='color: #999; text-align: center; margin-top: 20px; font-family: monospace;'>No active visuals.</div>", unsafe_allow_html=True)
