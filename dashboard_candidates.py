@@ -2,6 +2,7 @@ import streamlit as st
 import geopandas as gpd
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
 
 # ==============================================================================
 # SECTION 1: STREAMLIT PAGE CONFIGURATION
@@ -12,7 +13,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# SECTION 2: DATA LOADING & OPTIMIZATION (CACHING)
+# SECTION 2: DATA LOADING & OPTIMIZATION (CACHING - THREE DISTINCT SOURCES)
 # ==============================================================================
 GEOJSON_PATH = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main/roads_time_municipalities.json"
 MUNICIPALITIES_PATH = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main/colombia_municipalities_codes.geojson"
@@ -20,27 +21,53 @@ ROAD_TYPE_MUNI_PATH = "https://raw.githubusercontent.com/jsyanezastudio/colombia
 
 @st.cache_data
 def load_data():
+    # Source 1: Road geometries and dates
     gdf_roads = gpd.read_file(GEOJSON_PATH)
-    gdf_muni = gpd.read_file(MUNICIPALITIES_PATH)
-    gdf_road_type = gpd.read_file(ROAD_TYPE_MUNI_PATH)
     
-    # Process dates for DiD Analysis
+    # Source 2: Base geographic shapes for municipalities
+    gdf_muni = gpd.read_file(MUNICIPALITIES_PATH)
+    
+    # Source 3: Plain JSON file containing the verified 'id_type' mapping
+    response = requests.get(ROAD_TYPE_MUNI_PATH)
+    json_data = response.json()
+    
+    # Convert plain JSON to standard DataFrame for cross-referencing
+    # Normalizing features if structured as GeoJSON format or standard tabular dict
+    if "features" in json_data:
+        records = [feat["properties"] for feat in json_data["features"]]
+        df_road_type = pd.DataFrame(records)
+    else:
+        df_road_type = pd.DataFrame(json_data)
+    
+    # Standardize date objects for DiD Analysis
     for col in ['pre_date', 'start_date', 'oper_date']:
         gdf_roads[col] = pd.to_datetime(gdf_roads[col], errors='coerce', dayfirst=True)
     gdf_roads['oper_year'] = gdf_roads['oper_date'].dt.year
     
-    # Standardize CRS projections
+    # Match Coordinate Reference Systems (CRS)
     if gdf_muni.crs != gdf_roads.crs:
         gdf_muni = gdf_muni.to_crs(gdf_roads.crs)
-    if gdf_road_type.crs != gdf_roads.crs:
-        gdf_road_type = gdf_road_type.to_crs(gdf_roads.crs)
         
-    return gdf_roads, gdf_muni, gdf_road_type
+    # Merge 'id_type' from Source 3 into base shapefiles (Source 2) for Section 1 maps
+    # Detect appropriate merge keys (supporting potential casing variants in keys)
+    muni_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_muni.columns else gdf_muni.columns[0]
+    df_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in df_road_type.columns else df_road_type.columns[0]
+    
+    # Cast keys to string to prevent mismatch errors
+    gdf_muni[muni_key] = gdf_muni[muni_key].astype(str)
+    df_road_type[df_key] = df_road_type[df_key].astype(str)
+    
+    # Standardize column name inside dataframe
+    df_road_type = df_road_type.rename(columns={df_key: 'muni_code_match'})
+    gdf_muni = gdf_muni.merge(df_road_type[['muni_code_match', 'id_type']], left_on=muni_key, right_on='muni_code_match', how='left')
+    gdf_muni['id_type'] = gdf_muni['id_type'].fillna('Sin vías')
+        
+    return gdf_roads, gdf_muni, df_road_type
 
-gdf_compiled, gdf_municipalities, gdf_muni_road_type = load_data()
+gdf_compiled, gdf_municipalities, df_muni_road_type = load_data()
 
 # Pre-calculations for baseline constants
-TOTAL_MUNI_COUNT = len(gdf_muni_road_type)
+TOTAL_MUNI_COUNT = len(gdf_municipalities)
 ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
 TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
 
@@ -168,26 +195,23 @@ with col_control:
 with col_map:
     fig_map, ax_map = plt.subplots(figsize=(9, 11))
     
+    # Render shared base background
+    gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
+    
     if main_menu == "1. Colombia Roads":
-        # Base Layer: All Municipalities from the new specific file
-        gdf_muni_road_type.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
-        
         # Yellow Layer: id_type != 'Sin vías'
-        if show_any_roads and 'id_type' in gdf_muni_road_type.columns:
-            muni_with_roads = gdf_muni_road_type[gdf_muni_road_type['id_type'] != 'Sin vías']
+        if show_any_roads and 'id_type' in gdf_municipalities.columns:
+            muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías']
             if not muni_with_roads.empty:
                 muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
         
         # Green Layer: id_type == 'Doble'
-        if show_doble_roads and 'id_type' in gdf_muni_road_type.columns:
-            muni_doble = gdf_muni_road_type[gdf_muni_road_type['id_type'] == 'Doble']
+        if show_doble_roads and 'id_type' in gdf_municipalities.columns:
+            muni_doble = gdf_municipalities[gdf_municipalities['id_type'] == 'Doble']
             if not muni_doble.empty:
                 muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
 
     elif main_menu == "2. DiD Candidates":
-        # Standard Base Layer
-        gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
-        
         if not impacted_muni.empty: 
             impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
         if not filtered_roads.empty: 
@@ -212,12 +236,12 @@ with col_map:
 # SECTION 8: RIGHT PANEL VISUALIZATIONS & CHARTS (col_right)
 # ==============================================================================
 with col_right:
-    if main_menu == "1. Colombia Roads" and 'id_type' in gdf_muni_road_type.columns:
+    if main_menu == "1. Colombia Roads" and 'id_type' in gdf_municipalities.columns:
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Infrastructure Breakdown</div>", unsafe_allow_html=True)
         
-        # Calculate accurate metrics directly from the new verified dataset
-        count_any_roads = len(gdf_muni_road_type[gdf_muni_road_type['id_type'] != 'Sin vías'])
-        count_doble_roads = len(gdf_muni_road_type[gdf_muni_road_type['id_type'] == 'Doble'])
+        # Extract metrics directly from our structural dataset containing the mapped keys
+        count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
+        count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
         count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
         count_other_roads = count_any_roads - count_doble_roads
 
@@ -242,7 +266,7 @@ with col_right:
         st.pyplot(fig_pies, use_container_width=True)
 
     elif main_menu == "2. DiD Candidates":
-        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
         
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none') 
