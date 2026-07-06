@@ -103,13 +103,12 @@ def get_sorted_filters(_gdf_r, _gdf_m):
 
 unique_projects, years_list = get_sorted_filters(gdf_compiled, gdf_municipalities)
 
-# Diccionario puente mapeado directamente con los nombres exactos de los strings del JSON
 project_groups_mapping = {
     "Bogotá – La Vega – Villeta": {
         "codes": [25402, 25430, 25489, 25491, 25658, 25769]
     },
     "Desarrollo Vial del Oriente de Medellín – DEVIMED": {
-        "codes": [17174, 17001, 66001, 63690, 66682, 17873] # O tus códigos asignados al corredor correspondiente
+        "codes": [17174, 17001, 66001, 63690, 66682, 17873]
     },
     "Honda – Puerto Salgar – Girardot": {
         "codes": [73275, 25307]
@@ -119,11 +118,12 @@ project_groups_mapping = {
 # ==============================================================================
 # SECTION 4: HEADER DISPLAY BLOCK
 # ==============================================================================
+# MODIFICACIÓN 2: Título principal agrandado con h1 para máxima jerarquía visual
 st.markdown(
     """
-    <div style='text-align:center; padding: 10px; background-color: #1a5276; color: white; border-radius: 8px; margin-bottom: 20px; font-family: monospace;'>
-        <h3 style='margin:0; font-size: 14px; color: white !important;'>Colombia Road Infrastructure Analytics Platform</h3>
-        <p style='margin:5px 0 0 0; opacity: 0.8; font-size: 11px; color: white !important;'>Geospatial Analysis Base Layer & DiD Treatment Evaluation</p>
+    <div style='text-align:center; padding: 15px; background-color: #1a5276; color: white; border-radius: 8px; margin-bottom: 20px; font-family: monospace;'>
+        <h1 style='margin:0; font-size: 24px; font-weight: bold; color: white !important;'>Colombia Road Infrastructure Analytics Platform</h1>
+        <p style='margin:5px 0 0 0; opacity: 0.8; font-size: 12px; color: white !important;'>Geospatial Analysis Base Layer & DiD Treatment Evaluation</p>
     </div>
     """, 
     unsafe_allow_html=True
@@ -139,9 +139,11 @@ col_control, col_map, col_right = st.columns([20, 55, 25])
 # ==============================================================================
 with col_control:
     st.markdown("### Main Menu")
+    
+    # MODIFICACIÓN 1: Nombre de la pestaña cambiado a "3. Municipality Data Exploration"
     main_menu = st.selectbox(
         "Select View Module:",
-        options=["1. Colombia Roads", "2. Municipalities with Projects", "3. City Data Exploration"]
+        options=["1. Colombia Roads", "2. Municipalities with Projects", "3. Municipality Data Exploration"]
     )
     
     st.markdown("---")
@@ -192,24 +194,24 @@ with col_control:
             unsafe_allow_html=True
         )
 
-    elif main_menu == "3. City Data Exploration":
+    elif main_menu == "3. Municipality Data Exploration":
         st.info("Interactive dimensions enabled. Modify variables inside the viewport setup panels directly.")
 
-    # Descripciones dinámicas en inglés abajo del bloque de filtros
+    # MODIFICACIÓN 2: Fuente de la descripción aumentada a un tamaño legible (font-size: 13px)
     st.markdown("---")
     st.markdown("### Module Description")
     if main_menu == "1. Colombia Roads":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 10px; border-left: 4px solid #1a5276; font-size: 11px; font-family: sans-serif; color: #566573;'>Global analysis of Colombian municipalities targeting active road networks alongside explicit tracking of structural improvements and highway upgrades within these zones.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 13px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Global analysis of Colombian municipalities targeting active road networks alongside explicit tracking of structural improvements and highway upgrades within these zones.</div>", unsafe_allow_html=True)
     elif main_menu == "2. Municipalities with Projects":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 10px; border-left: 4px solid #1a5276; font-size: 11px; font-family: sans-serif; color: #566573;'>Granular analysis of targeted territories hosting specific road network segments fully upgraded and actively in operation, filtered interactively by operational calendar years.</div>", unsafe_allow_html=True)
-    elif main_menu == "3. City Data Exploration":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 10px; border-left: 4px solid #1a5276; font-size: 11px; font-family: sans-serif; color: #566573;'>Strategic performance evaluation isolating core infrastructure projects displaying optimal econometric projections for rigorous impact evaluations using Difference-in-Differences (DiD) or Synthetic Control methodologies.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 13px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Granular analysis of targeted territories hosting specific road network segments fully upgraded and actively in operation, filtered interactively by operational calendar years.</div>", unsafe_allow_html=True)
+    elif main_menu == "3. Municipality Data Exploration":
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 13px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Strategic performance evaluation isolating core infrastructure projects displaying optimal econometric projections for rigorous impact evaluations using Difference-in-Differences (DiD) or Synthetic Control methodologies.</div>", unsafe_allow_html=True)
 
 # ==============================================================================
 # SECTION 7: GEOSPATIAL MAP / PLOTLY TRENDS PLOTTING (col_map)
 # ==============================================================================
 with col_map:
-    if main_menu != "3. City Data Exploration":
+    if main_menu != "3. Municipality Data Exploration":
         fig_map, ax_map = plt.subplots(figsize=(9, 11))
         gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
         
@@ -370,38 +372,43 @@ with col_right:
         else:
             st.info("No municipalities found.")
 
-    elif main_menu == "3. City Data Exploration":
+    elif main_menu == "3. Municipality Data Exploration":
         # --------------------------------------------------------------------------
-        # MODIFICACIÓN 3: Zoom del Mapa + Tabla Vinculada de Forma Directa
+        # MODIFICACIÓN 3: Tarjeta Año Operación + Zoom de Mapa + Tabla Mapeada Completa
         # --------------------------------------------------------------------------
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Project Corridor Zoom</div>", unsafe_allow_html=True)
         
-        # Filtramos directamente las líneas del GeoJSON usando la etiqueta exacta seleccionada en la pestaña
+        # Extracción y renderizado dinámico del Año de Operación del proyecto vial seleccionado
         gdf_project_roads = gdf_compiled[gdf_compiled['PROYECTO'] == selected_project]
+        active_years = gdf_project_roads['oper_year'].dropna().unique()
+        year_display = str(int(active_years[0])) if len(active_years) > 0 else "N/A"
         
+        st.markdown(
+            f"""
+            <div style='text-align:center; padding: 6px; background: #ebf5fb; border: 1px dashed #1a5276; border-radius: 6px; margin-top: 10px; margin-bottom: 10px; font-family: monospace;'>
+                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Project Operation Year</span><br>
+                <span style='font-size: 15px; color: #1a5276; font-weight: bold;'>{year_display}</span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        # Renderizado de la Cámara de Zoom Geoespacial
         fig_zoom, ax_zoom = plt.subplots(figsize=(4, 4))
         fig_zoom.patch.set_facecolor('none')
-        
-        # Mapa base nacional de fondo tenue
         gdf_municipalities.plot(ax=ax_zoom, facecolor='#f4f6f6', edgecolor='#d5dbdb', linewidth=0.2)
         
         if not gdf_project_roads.empty:
-            # Encontramos los municipios que toca este proyecto mediante una intersección espacial limpia (idéntico a sección 2)
             spatial_hits = gpd.sjoin(gdf_municipalities, gdf_project_roads, how="inner", predicate="intersects")
-            
             if not spatial_hits.empty:
                 gdf_zoom_muni = gdf_municipalities.loc[spatial_hits.index.unique()]
-                # Resaltar polígonos de los municipios interceptados
                 gdf_zoom_muni.plot(ax=ax_zoom, facecolor='#d4e6f1', edgecolor='#1a5276', linewidth=0.5, alpha=0.7)
-                # Pintar la traza de la vía del GeoJSON encima en color rojo
                 gdf_project_roads.plot(ax=ax_zoom, color='#cb4335', linewidth=1.5)
                 
-                # Ejecutar encuadre (Zoom de Cámara automático sobre el bounding box)
                 minx, miny, maxx, maxy = gdf_zoom_muni.total_bounds
                 ax_zoom.set_xlim([minx - 0.4, maxx + 0.4])
                 ax_zoom.set_ylim([miny - 0.4, maxy + 0.4])
         else:
-            # En caso de que falle la traza del proyecto en particular, hacemos zoom por los códigos numéricos DANE mapeados
             target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
             gdf_zoom_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
             if not gdf_zoom_muni.empty:
@@ -414,17 +421,17 @@ with col_right:
         plt.tight_layout()
         st.pyplot(fig_zoom, use_container_width=True)
         
-        # Subsección inferior: Tabla de los municipios mapeados
-        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top:10px; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
+        # Tabla estructurada inferior (Municipio y Código del Municipio DANE)
+        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top:12px; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
         
         target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
         gdf_table_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
         
         if not gdf_table_muni.empty:
-            corridor_list_data = gdf_table_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
+            corridor_list_data = gdf_table_muni[['Municipality_Name_DANE', 'Municipality_Code_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
             st.dataframe(
-                corridor_list_data.rename(columns={'Municipality_Code_DANE': 'Code', 'Municipality_Name_DANE': 'Name'}),
-                hide_index=True, use_container_width=True, height=220
+                corridor_list_data.rename(columns={'Municipality_Name_DANE': 'Municipality', 'Municipality_Code_DANE': 'Code'}),
+                hide_index=True, use_container_width=True, height=200
             )
         else:
             st.info("No municipal items found matching the current cluster index.")
