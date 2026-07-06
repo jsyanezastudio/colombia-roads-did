@@ -327,26 +327,25 @@ with col_right:
         count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
         count_other_roads = count_any_roads - count_doble_roads
 
-        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
+        # OPTIMIZACIÓN: Aumentado el tamaño vertical y horizontal del canvas (figsize)
+        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(4.5, 8.5))
         fig_pies.patch.set_facecolor('none')
         
         v1 = [count_any_roads, max(0.1, count_no_roads)]
+        # OPTIMIZACIÓN: Añadido radius=1.2 para expandir el pastel dentro de su eje
         ax1.pie(v1, labels=['With Roads', 'No Roads'], 
                 autopct=lambda pct: absolute_value_format(pct, v1), 
-                colors=['#f4d03f', '#eeeeee'], startangle=90, 
-                textprops={'fontsize': 8, 'family': 'monospace'})
-        
-        # MODIFICACIÓN DE TÍTULO 1 (Removido versus/vs)
-        ax1.set_title("Proportional Distribution: Treatment Stock within National Baseline", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+                colors=['#f4d03f', '#eeeeee'], startangle=90, radius=1.2,
+                textprops={'fontsize': 9, 'family': 'monospace'})
+        ax1.set_title("Proportional Distribution:\nTreatment Stock within National Baseline", fontsize=9.5, family='monospace', color='#1a5276', weight='bold', pad=15)
         
         v2 = [count_doble_roads, max(0.1, count_other_roads)]
+        # OPTIMIZACIÓN: Añadido radius=1.2 para expandir el segundo pastel
         ax2.pie(v2, labels=['Dual (Doble)', 'Other Types'], 
                 autopct=lambda pct: absolute_value_format(pct, v2), 
-                colors=['#27ae60', '#eeeeee'], startangle=90, 
-                textprops={'fontsize': 8, 'family': 'monospace'})
-        
-        # MODIFICACIÓN DE TÍTULO 2 (Removido versus/vs)
-        ax2.set_title("Segment Allocation: High-Capacity (Dual) within Active Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+                colors=['#27ae60', '#eeeeee'], startangle=90, radius=1.2,
+                textprops={'fontsize': 9, 'family': 'monospace'})
+        ax2.set_title("Segment Allocation:\nHigh-Capacity (Dual) within Active Road Network", fontsize=9.5, family='monospace', color='#1a5276', weight='bold', pad=15)
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
@@ -354,22 +353,23 @@ with col_right:
     elif main_menu == "2. Municipalities with Projects":
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px 5px 0 0; font-family: monospace; font-size:12px; text-align:center;'>DiD Sample Statistics</div>", unsafe_allow_html=True)
         
-        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 4.5))
+        # OPTIMIZACIÓN: Aumentado el tamaño vertical del canvas para el módulo de proyectos
+        fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(4.5, 7.5))
         fig_pies.patch.set_facecolor('none') 
         
         v3 = [selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)]
         ax1.pie(v3, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v3), 
-                colors=['#1a5276', '#eeeeee'], startangle=90, 
-                textprops={'fontsize': 8, 'family': 'monospace'})
-        ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+                colors=['#1a5276', '#eeeeee'], startangle=90, radius=1.2,
+                textprops={'fontsize': 9, 'family': 'monospace'})
+        ax1.set_title("vs National Total", fontsize=9.5, family='monospace', color='#1a5276', weight='bold', pad=15)
         
         v4 = [selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)]
         ax2.pie(v4, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v4), 
-                colors=['#d4e6f1', '#eeeeee'], startangle=90, 
-                textprops={'fontsize': 8, 'family': 'monospace'})
-        ax2.set_title("vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+                colors=['#d4e6f1', '#eeeeee'], startangle=90, radius=1.2,
+                textprops={'fontsize': 9, 'family': 'monospace'})
+        ax2.set_title("vs Road Network", fontsize=9.5, family='monospace', color='#1a5276', weight='bold', pad=15)
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
