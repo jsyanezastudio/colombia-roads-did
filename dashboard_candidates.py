@@ -118,7 +118,6 @@ project_groups_mapping = {
 # ==============================================================================
 # SECTION 4: HEADER DISPLAY BLOCK
 # ==============================================================================
-# Título principal escalado a 32px (font-weight: 800) y subtítulo personalizado integrado
 st.markdown(
     """
     <div style='text-align:center; padding: 20px 15px; background-color: #1a5276; color: white; border-radius: 8px; margin-bottom: 20px; font-family: monospace;'>
@@ -207,7 +206,6 @@ with col_control:
             """, unsafe_allow_html=True
         )
 
-    # Descripciones del módulo (fijadas de forma legible en font-size: 15px)
     st.markdown("---")
     st.markdown("### Module Description")
     if main_menu == "1. Colombia Roads":
@@ -337,14 +335,18 @@ with col_right:
                 autopct=lambda pct: absolute_value_format(pct, v1), 
                 colors=['#f4d03f', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
-        ax1.set_title("Road Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        
+        # MODIFICACIÓN DE TÍTULO 1 (Removido versus/vs)
+        ax1.set_title("Proportional Distribution: Treatment Stock within National Baseline", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         v2 = [count_doble_roads, max(0.1, count_other_roads)]
         ax2.pie(v2, labels=['Dual (Doble)', 'Other Types'], 
                 autopct=lambda pct: absolute_value_format(pct, v2), 
                 colors=['#27ae60', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
-        ax2.set_title("Dual Carriageways vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        
+        # MODIFICACIÓN DE TÍTULO 2 (Removido versus/vs)
+        ax2.set_title("Segment Allocation: High-Capacity (Dual) within Active Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
@@ -388,7 +390,6 @@ with col_right:
         # --------------------------------------------------------------------------
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Project Corridor Zoom</div>", unsafe_allow_html=True)
         
-        # Extracción segura de datos espaciales directos del proyecto activo en el GeoJSON
         gdf_project_roads = gdf_compiled[gdf_compiled['PROYECTO'] == selected_project]
         active_years = gdf_project_roads['oper_year'].dropna().unique()
         year_display = str(int(active_years[0])) if len(active_years) > 0 else "N/A"
@@ -403,7 +404,6 @@ with col_right:
             unsafe_allow_html=True
         )
         
-        # Intersección espacial robusta para obtener los polígonos correctos
         spatial_hits = gpd.sjoin(gdf_municipalities, gdf_project_roads, how="inner", predicate="intersects")
         
         fig_zoom, ax_zoom = plt.subplots(figsize=(4, 4))
@@ -419,7 +419,6 @@ with col_right:
             ax_zoom.set_xlim([minx - 0.4, maxx + 0.4])
             ax_zoom.set_ylim([miny - 0.4, maxy + 0.4])
         else:
-            # Fallback seguro por lista dura si falla la intersección espacial
             target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
             gdf_zoom_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
             if not gdf_zoom_muni.empty:
@@ -432,7 +431,6 @@ with col_right:
         plt.tight_layout()
         st.pyplot(fig_zoom, use_container_width=True)
         
-        # Renderizado de la tabla con las columnas solicitadas: Municipio y Código
         st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top:12px; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
         
         if not spatial_hits.empty:
@@ -442,7 +440,6 @@ with col_right:
                 hide_index=True, use_container_width=True, height=220
             )
         else:
-            # Fallback para la tabla usando los códigos explícitos estructurados
             target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
             gdf_table_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
             if not gdf_table_muni.empty:
