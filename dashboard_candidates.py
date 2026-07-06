@@ -68,27 +68,32 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# SECTION 2: DATA PRE-PROCESSING & MERGING
+# SECTION 2: DATA PRE-PROCESSING & MERGING (Explicit Capitalization Fix)
 # ==============================================================================
 TOTAL_MUNI_COUNT = 1122
 
-# Ensure the spatial dataframe contains the 'id_type' classification from the support file
-if 'id_type' not in gdf_municipalities.columns:
-    if 'Municipality_Code_DANE' in gdf_road_type_support.columns:
-        # Standardize keys to string or int to avoid merge discrepancies
-        gdf_municipalities['Municipality_Code_DANE'] = gdf_municipalities['Municipality_Code_DANE'].astype(str)
-        gdf_road_type_support['Municipality_Code_DANE'] = gdf_road_type_support['Municipality_Code_DANE'].astype(str)
-        
-        gdf_municipalities = gdf_municipalities.merge(
-            gdf_road_type_support[['Municipality_Code_DANE', 'id_type']], 
-            on='Municipality_Code_DANE', how='left'
-        )
+# Standardize key column types to avoid match errors
+if 'Municipality_Code_DANE' in gdf_municipalities.columns:
+    gdf_municipalities['Municipality_Code_DANE'] = gdf_municipalities['Municipality_Code_DANE'].astype(str)
 
-# Calculate correct baseline metrics for Module 1 maps and pie charts
+if 'Municipality_Code_DANE' in gdf_road_type_support.columns:
+    gdf_road_type_support['Municipality_Code_DANE'] = gdf_road_type_support['Municipality_Code_DANE'].astype(str)
+
+# Map directly using your exact column name: 'Id_type' to fix KeyError
+if 'id_type' not in gdf_municipalities.columns:
+    if 'Municipality_Code_DANE' in gdf_road_type_support.columns and 'Id_type' in gdf_road_type_support.columns:
+        bridge_df = gdf_road_type_support[['Municipality_Code_DANE', 'Id_type']].copy()
+        bridge_df = bridge_df.rename(columns={'Id_type': 'id_type'})
+        
+        gdf_municipalities = gdf_municipalities.merge(bridge_df, on='Municipality_Code_DANE', how='left')
+    else:
+        gdf_municipalities['id_type'] = 'Sin vias'
+
+# Calculate metrics safely for visualizations based on standard classes
 if 'id_type' in gdf_municipalities.columns:
     gdf_municipalities['id_type'] = gdf_municipalities['id_type'].fillna('Sin vias')
     count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias'])
-    count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
+    count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)])
     count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
     count_other_roads = count_any_roads - count_doble_roads
 else:
@@ -159,7 +164,6 @@ with col_control:
 
         selected_count = len(muni_list_data)
 
-        # Standalone KPI card integrated inside the lateral menu
         st.markdown(
             f"""
             <div style='text-align:center; padding: 10px; background: white; border: 2px solid #1a5276; border-radius: 8px; margin-top: 15px; margin-bottom: 10px; font-family: monospace;'>
@@ -175,7 +179,7 @@ with col_control:
         st.info("Interactive panel enabled. Adjust analytical dimensions directly in the central viewport section.")
 
 # ==============================================================================
-# SECTION 5: PRIMARY GEOSPATIAL MAPS AND plotly CHARTS (col_map)
+# SECTION 5: PRIMARY GEOSPATIAL MAPS AND PLOTLY CHARTS (col_map)
 # ==============================================================================
 with col_map:
     # --- STATIC GEOPANDAS RENDER PLOTS (MODULES 1 & 2) ---
@@ -192,7 +196,8 @@ with col_map:
                     muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
             
             if show_doble_roads and 'id_type' in gdf_municipalities.columns:
-                muni_doble = gdf_municipalities[gdf_municipalities['id_type'] == 'Doble']
+                # Match dynamically with mapped road classes
+                muni_doble = gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)]
                 if not muni_doble.empty:
                     muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
 
@@ -325,7 +330,6 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Check against overall network baseline
         total_eligible_network = count_any_roads if count_any_roads > 0 else 500
         v4 = [selected_count, max(0.1, total_eligible_network - selected_count)]
         ax2.pie(v4, labels=['Selected', 'Other'], 
