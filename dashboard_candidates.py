@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # ==============================================================================
-# CONFIGURACIÓN DE PÁGINA (Debe ser la primera instrucción de Streamlit)
+# PAGE CONFIGURATION (Must be the first Streamlit command)
 # ==============================================================================
 st.set_page_config(
     page_title="Colombia Infrastructure & Impact Dashboard",
@@ -14,123 +14,131 @@ st.set_page_config(
     layout="wide"
 )
 
-# FORMATO ADICIONAL PARA GRÁFICAS DE MATPLOTLIB
+# ADDITIONAL FORMATTING FOR MATPLOTLIB PIE CHARTS
 def absolute_value_format(val, allvals):
     import numpy as np
     a = int(np.round(val/100.*np.sum(allvals)))
     return f"{a}"
 
 # ==============================================================================
-# SECCIÓN 1: INGESTIÓN Y CACHÉ DE DATOS (URLs Oficiales del Repositorio)
+# SECTION 1: DATA INGESTION & CACHING (Official Repository URLs)
 # ==============================================================================
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main"
 
 @st.cache_data
 def load_geospatial_data():
-    # 1. Red de Vías Compiladas / Líneas Temporales
+    # 1. Compiled Road Network / Temporal Lines
     roads_url = f"{GITHUB_RAW_BASE}/roads_time_municipalities.json"
     try:
         gdf_roads = gpd.read_file(roads_url)
     except Exception as e:
-        raise RuntimeError(f"Error al cargar 'roads_time_municipalities.json': {e}")
+        raise RuntimeError(f"Error loading 'roads_time_municipalities.json': {e}")
     
-    # 2. Municipios Base de Colombia (Códigos y Geometría)
+    # 2. Colombia Base Municipalities (Codes & Geometry)
     muni_url = f"{GITHUB_RAW_BASE}/colombia_municipalities_codes.geojson"
     try:
         gdf_muni = gpd.read_file(muni_url)
     except Exception as e:
-        raise RuntimeError(f"Error al cargar 'colombia_municipalities_codes.geojson': {e}")
+        raise RuntimeError(f"Error loading 'colombia_municipalities_codes.geojson': {e}")
         
-    # 3. Municipios clasificados por tipo de vía (JSON de soporte)
+    # 3. Municipalities classified by road type (Support Attribute Data)
     road_type_url = f"{GITHUB_RAW_BASE}/municipalities_by_road_type.json"
     try:
         gdf_road_type = gpd.read_file(road_type_url)
     except Exception as e:
-        raise RuntimeError(f"Error al cargar 'municipalities_by_road_type.json': {e}")
+        raise RuntimeError(f"Error loading 'municipalities_by_road_type.json': {e}")
     
     return gdf_roads, gdf_muni, gdf_road_type
 
 @st.cache_data
 def load_impact_dataset():
-    # 4. Dataset de Impacto Municipal (CSV) cargado homogéneamente
+    # 4. Municipal Socioeconomic Impact Dataset (CSV Panel Data)
     impact_url = f"{GITHUB_RAW_BASE}/colombia_infrastructure_impact_dataset.csv"
     try:
         return pd.read_csv(impact_url)
     except Exception as e:
-        raise RuntimeError(f"Error al cargar 'colombia_infrastructure_impact_dataset.csv': {e}")
+        raise RuntimeError(f"Error loading 'colombia_infrastructure_impact_dataset.csv': {e}")
 
-# Carga segura con auditoría de errores específica
+# Safe loading execution
 try:
     gdf_compiled, gdf_municipalities, gdf_road_type_support = load_geospatial_data()
     df_impact = load_impact_dataset()
 except Exception as e:
-    st.error(f"❌ {e}")
+    st.error(f"Critical Error: {e}")
     st.stop()
 
 # ==============================================================================
-# SECCIÓN 2: PROCESAMIENTO PREVIO Y CONSTANTES MUNICIPALES
+# SECTION 2: DATA PRE-PROCESSING & MERGING
 # ==============================================================================
 TOTAL_MUNI_COUNT = 1122
 
-# Acoplar clasificación de vías desde el JSON de soporte si existe la columna id_type
-if 'id_type' in gdf_road_type_support.columns and 'id_type' not in gdf_municipalities.columns:
-    # Asegurar unión por códigos municipales si comparten llave común
+# Ensure the spatial dataframe contains the 'id_type' classification from the support file
+if 'id_type' not in gdf_municipalities.columns:
     if 'Municipality_Code_DANE' in gdf_road_type_support.columns:
+        # Standardize keys to string or int to avoid merge discrepancies
+        gdf_municipalities['Municipality_Code_DANE'] = gdf_municipalities['Municipality_Code_DANE'].astype(str)
+        gdf_road_type_support['Municipality_Code_DANE'] = gdf_road_type_support['Municipality_Code_DANE'].astype(str)
+        
         gdf_municipalities = gdf_municipalities.merge(
             gdf_road_type_support[['Municipality_Code_DANE', 'id_type']], 
             on='Municipality_Code_DANE', how='left'
         )
 
+# Calculate correct baseline metrics for Module 1 maps and pie charts
 if 'id_type' in gdf_municipalities.columns:
-    TOTAL_MUNI_WITH_ROADS = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
+    gdf_municipalities['id_type'] = gdf_municipalities['id_type'].fillna('Sin vias')
+    count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias'])
+    count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
+    count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
+    count_other_roads = count_any_roads - count_doble_roads
 else:
-    TOTAL_MUNI_WITH_ROADS = 500  # Fallback seguro
+    count_any_roads, count_doble_roads, count_no_roads, count_other_roads = 500, 150, 622, 350
 
-# Extraer parámetros dinámicos para los filtros del Módulo 2
+# Extract dynamic query boundaries for Module 2 dropdown selectors
 unique_projects = ["All"] + sorted(list(gdf_compiled['PROYECTO'].dropna().unique())) if 'PROYECTO' in gdf_compiled.columns else ["All"]
 years_list = ["All"] + sorted(list(gdf_compiled['oper_year'].dropna().astype(int).unique())) if 'oper_year' in gdf_compiled.columns else ["All"]
 
 # ==============================================================================
-# SECCIÓN 3: ARQUITECTURA ESTRUCTURAL DE COLUMNAS (Streamlit Layout)
+# SECTION 3: DASHBOARD LAYOUT & COLUMNS STRUCTURING
 # ==============================================================================
-st.markdown("<h1 style='text-align: center; color: #1a5276;'>🇨🇴 Infraestructura Vial e Impacto Municipal en Colombia</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555;'>Plataforma Analítica Interactiva para la evaluación de proyectos viales y Diferencia en Diferencias (DiD)</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1a5276;'>Colombia Infrastructure and Municipal Impact Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555;'>Interactive Analytical Framework for Highway Project Evaluation and Difference-in-Differences Candidates</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 col_control, col_map, col_right = st.columns([1.5, 5, 2.5])
 
 # ==============================================================================
-# SECCIÓN 4: CONTROL DE FILTROS LATERALES (col_control)
+# SECTION 4: LATERAL CONTROLS PANEL (col_control)
 # ==============================================================================
 with col_control:
-    st.markdown("### 🗺️ Módulos del Sistema")
+    st.markdown("### System Modules")
     main_menu = st.selectbox(
-        "Selecciona el Enfoque:",
+        "Select Analytical Focus:",
         options=["1. Colombia Roads", "2. DiD Candidates", "3. City Data Exploration"]
     )
     
     st.markdown("---")
-    st.markdown("### 🎛️ Filtros Dinámicos")
+    st.markdown("### Dynamic Filters")
 
-    # --- CONTROL MÓDULO 1 ---
+    # --- MODULE 1 CONTROL ---
     if main_menu == "1. Colombia Roads":
-        st.markdown("**Capas del Mapa:**")
-        show_any_roads = st.checkbox("Municipios con Red Vial", value=True)
-        show_doble_roads = st.checkbox("Municipios con Doble Calzada", value=True)
+        st.markdown("**Map Layers Configuration:**")
+        show_any_roads = st.checkbox("Municipalities with Road Network", value=True)
+        show_doble_roads = st.checkbox("Municipalities with Dual Carriageway", value=True)
 
-    # --- CONTROL MÓDULO 2 ---
+    # --- MODULE 2 CONTROL ---
     elif main_menu == "2. DiD Candidates":
-        filter_mode = st.radio("Filtrar Muestra Por:", ['Proyecto', 'Año de Operación'], horizontal=True)
+        filter_mode = st.radio("Filter Sample By:", ['Project', 'Operation Year'], horizontal=True)
         val_proj = "All"
         val_year = "All"
-        is_project_mode = (filter_mode == 'Proyecto')
+        is_project_mode = (filter_mode == 'Project')
 
         if is_project_mode:
-            val_proj = st.selectbox('Selecciona Proyecto:', options=unique_projects, key="proj_select")
+            val_proj = st.selectbox('Select Specific Project:', options=unique_projects, key="proj_select")
         else:
-            val_year = st.selectbox('Selecciona Año:', options=years_list, key="year_select")
+            val_year = st.selectbox('Select Specific Year:', options=years_list, key="year_select")
 
-        # Cómputo espacial en caliente para candidatos DiD
+        # Live spatial calculation for DiD target boundaries
         filtered_roads = gdf_compiled.copy()
         if is_project_mode:
             if val_proj != 'All':
@@ -151,35 +159,35 @@ with col_control:
 
         selected_count = len(muni_list_data)
 
-        # Métrica KPI integrada en el menú lateral
+        # Standalone KPI card integrated inside the lateral menu
         st.markdown(
             f"""
             <div style='text-align:center; padding: 10px; background: white; border: 2px solid #1a5276; border-radius: 8px; margin-top: 15px; margin-bottom: 10px; font-family: monospace;'>
-                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Municipios Impactados</span><br>
+                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Impacted Municipalities</span><br>
                 <span style='font-size: 24px; color: #1a5276; font-weight: bold;'>{selected_count}</span>
             </div>
             """, 
             unsafe_allow_html=True
         )
 
-    # --- CONTROL MÓDULO 3 ---
+    # --- MODULE 3 CONTROL ---
     elif main_menu == "3. City Data Exploration":
-        st.info("💡 Panel interactivo configurado. Selecciona las variables directamente en la sección central.")
+        st.info("Interactive panel enabled. Adjust analytical dimensions directly in the central viewport section.")
 
 # ==============================================================================
-# SECCIÓN 5: VISUALIZACIONES PRINCIPALES: MAPAS Y SERIES DE TIEMPO (col_map)
+# SECTION 5: PRIMARY GEOSPATIAL MAPS AND plotly CHARTS (col_map)
 # ==============================================================================
 with col_map:
-    # --- PROCESO PARA MAPAS ESTÁTICOS (MÓDULOS 1 Y 2) ---
+    # --- STATIC GEOPANDAS RENDER PLOTS (MODULES 1 & 2) ---
     if main_menu == "1. Colombia Roads" or main_menu == "2. DiD Candidates":
         fig_map, ax_map = plt.subplots(figsize=(9, 11))
         
-        # Capa municipal base de fondo
+        # Draw permanent grayscale baseline context layer
         gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
         
         if main_menu == "1. Colombia Roads":
             if show_any_roads and 'id_type' in gdf_municipalities.columns:
-                muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías']
+                muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias']
                 if not muni_with_roads.empty:
                     muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
             
@@ -208,17 +216,17 @@ with col_map:
         
         st.pyplot(fig_map, use_container_width=True)
 
-    # --- PROCESO PARA GRÁFICAS DE IMPACTO TEMPORAL (MÓDULO 3) ---
+    # --- PLOTLY HIGH-RESOLUTION INTERACTIVE CHARTS (MODULE 3) ---
     elif main_menu == "3. City Data Exploration":
         categories_map = {
-            'Educación': ['s11_total', 'alumn_total', 'docen_total'],
-            'Servicios e Infraestructura': ['tacued', 'turbacued', 'truracued', 'talcan'],
-            'Fiscal e Impacto': ['inv_total', 'TMI', 'y_total', 'y_corr']
+            'Education': ['s11_total', 'alumn_total', 'docen_total'],
+            'Services and Infrastructure': ['tacued', 'turbacued', 'truracued', 'talcan'],
+            'Fiscal and Impact': ['inv_total', 'TMI', 'y_total', 'y_corr']
         }
         all_variables_map = {
-            's11_total': 'Prueba Saber11', 'alumn_total': 'Estudiantes', 'docen_total': 'Maestros',
-            'tacued': 'Acueducto Total', 'turbacued': 'Acueducto Urbano', 'truracued': 'Acueducto Rural', 'talcan': 'Alcantarillado',
-            'inv_total': 'Inversión Total', 'TMI': 'Mortalidad Infantil', 'y_total': 'Ingresos Totales', 'y_corr': 'Ingresos Corrientes'
+            's11_total': 'Saber11 Standardized Score', 'alumn_total': 'Total Enrolled Students', 'docen_total': 'Total Active Teachers',
+            'tacued': 'Water Access Coverage (Total)', 'turbacued': 'Urban Water Coverage', 'truracued': 'Rural Water Coverage', 'talcan': 'Sewage Infrastructure Coverage',
+            'inv_total': 'Total Public Investment', 'TMI': 'Infant Mortality Rate', 'y_total': 'Total Municipal Revenues', 'y_corr': 'Current Operating Revenues'
         }
         project_groups_mapping = {
             "Corridor Honda - Puerto Salgar - Girardot": [73275, 25307],
@@ -239,20 +247,20 @@ with col_map:
         df_filtered = df_filtered.dropna(subset=['Project_Group']).copy()
         df_filtered['ano'] = df_filtered['ano'].astype(int)
 
-        st.markdown("### 🎛️ Variables de Desarrollo Socioeconómico")
+        st.markdown("### Socioeconomic Development Indicators")
         c1, c2, c3 = st.columns(3)
         with c1:
-            selected_project = st.selectbox("1. Corredor Vial Core:", options=list(project_groups_mapping.keys()))
+            selected_project = st.selectbox("1. Core Strategic Highway Corridor:", options=list(project_groups_mapping.keys()))
         with c2:
-            selected_category = st.selectbox("2. Dimensión de Análisis:", options=list(categories_map.keys()))
+            selected_category = st.selectbox("2. Analytical Dimension:", options=list(categories_map.keys()))
         with c3:
             available_cols = categories_map[selected_category]
             available_opts = {col: all_variables_map[col] for col in available_cols}
-            selected_var_code = st.selectbox("3. Métrica Detallada:", options=list(available_opts.keys()), format_func=lambda x: available_opts[x])
+            selected_var_code = st.selectbox("3. Granular Metric Target:", options=list(available_opts.keys()), format_func=lambda x: available_opts[x])
 
         df_plot = df_filtered[df_filtered['Project_Group'] == selected_project].copy()
         unique_muns = df_plot['Municipality_Code_Dane'].unique()
-        var_label_es = all_variables_map[selected_var_code]
+        var_label_en = all_variables_map[selected_var_code]
 
         fig = go.Figure()
         for idx, mun_code in enumerate(unique_muns):
@@ -265,11 +273,11 @@ with col_map:
             fig.add_trace(go.Scatter(
                 x=df_mun['ano'], y=df_mun[selected_var_code], mode='lines+markers',
                 name=f'Muni DANE {mun_code}', line=dict(color=colors_sampled[0], width=2.5),
-                hovertemplate=f'<b>Año</b>: %{{x}}<br><b>{var_label_es}</b>: %{{y:.2f}}<extra></extra>'
+                hovertemplate=f'<b>Year</b>: %{{x}}<br><b>{var_label_en}</b>: %{{y:.2f}}<extra></extra>'
             ))
 
         fig.update_layout(
-            title=f"Tendencia de: {var_label_es} ({selected_project})", xaxis_title="Año", yaxis_title=var_label_es,
+            title=f"Evolution Trend: {var_label_en} ({selected_project})", xaxis_title="Year", yaxis_title=var_label_en,
             hovermode='x unified', template="plotly_white", height=520, margin=dict(t=60, b=30, l=40, r=40)
         )
         fig.update_xaxes(tickformat=".0f", dtick=1, gridcolor="#F2F4F4")
@@ -278,17 +286,12 @@ with col_map:
         st.plotly_chart(fig, use_container_width=True)
 
 # ==============================================================================
-# SECCIÓN 6: PANELES DE ESTADÍSTICAS COMPLEMENTARIAS (col_right)
+# SECTION 6: DESCRIPTIVE STATISTICS & META-DATA EXPANDERS (col_right)
 # ==============================================================================
 with col_right:
-    if main_menu == "1. Colombia Roads" and 'id_type' in gdf_municipalities.columns:
+    if main_menu == "1. Colombia Roads":
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Infrastructure Breakdown</div>", unsafe_allow_html=True)
         
-        count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
-        count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
-        count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
-        count_other_roads = count_any_roads - count_doble_roads
-
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none')
         
@@ -322,7 +325,9 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        v4 = [selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)]
+        # Check against overall network baseline
+        total_eligible_network = count_any_roads if count_any_roads > 0 else 500
+        v4 = [selected_count, max(0.1, total_eligible_network - selected_count)]
         ax2.pie(v4, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v4), 
                 colors=['#d4e6f1', '#eeeeee'], startangle=90, 
@@ -333,24 +338,24 @@ with col_right:
         st.pyplot(fig_pies, use_container_width=True)
         
         st.markdown("---")
-        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Listado de Municipios</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Impacted Municipalities Inventory</div>", unsafe_allow_html=True)
         if not muni_list_data.empty:
             st.dataframe(
-                muni_list_data.rename(columns={'Municipality_Code_DANE': 'Código', 'Municipality_Name_DANE': 'Municipio'}),
+                muni_list_data.rename(columns={'Municipality_Code_DANE': 'Code', 'Municipality_Name_DANE': 'Municipality'}),
                 hide_index=True, use_container_width=True, height=220
             )
         else:
-            st.info("Ningún municipio intersecta los criterios.")
+            st.info("No municipal intersections match the selected query criteria.")
 
     elif main_menu == "3. City Data Exploration":
-        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Detalles de Cobertura</div>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>Este panel consolida variables clave de los censos y registros del DANE e interconecta las métricas de educación y servicios públicos con el año de entrega del corredor vial correspondiente.</p>", unsafe_allow_html=True)
+        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Coverage Overview</div>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>This analytical frame aggregates key public panel metrics from DANE censuses, interlinking education indices, health outcomes, and structural investments around the target highway operational timeline.</p>", unsafe_allow_html=True)
         
         if 'df_plot' in locals() and not df_plot.empty:
-            with st.expander("🔍 Ver Matriz Numérica"):
+            with st.expander("🔍 Inspect Tabular Matrix"):
                 st.dataframe(
                     df_plot[['Municipality_Code_Dane', 'ano', selected_var_code]]
-                    .rename(columns={'Municipality_Code_Dane': 'Muni', 'ano': 'Año', selected_var_code: 'Valor'})
+                    .rename(columns={'Municipality_Code_Dane': 'Muni', 'ano': 'Year', selected_var_code: 'Value'})
                     .dropna(),
                     hide_index=True, height=250
                 )
