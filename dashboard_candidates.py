@@ -23,30 +23,36 @@ def absolute_value_format(val, allvals):
 # ==============================================================================
 # SECCIÓN 1: INGESTIÓN Y CACHÉ DE DATOS (URLs Oficiales del Repositorio)
 # ==============================================================================
-# Base común para transformar enlaces tipo 'blob/main' en contenido bruto (RAW)
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main"
 
 @st.cache_data
 def load_geospatial_data():
-    # 1. Municipios Base de Colombia (URL RAW Homogénea)
-    muni_url = f"{GITHUB_RAW_BASE}/colombia_municipalities_base.geojson"
-    try:
-        gdf_muni = gpd.read_file(muni_url)
-    except Exception as e:
-        raise RuntimeError(f"Error al cargar 'colombia_municipalities_base.geojson': {e}")
-    
-    # 2. Red de Vías Compiladas (URL RAW Homogénea)
-    roads_url = f"{GITHUB_RAW_BASE}/colombia_compiled_roads_network.geojson"
+    # 1. Red de Vías Compiladas / Líneas Temporales
+    roads_url = f"{GITHUB_RAW_BASE}/roads_time_municipalities.json"
     try:
         gdf_roads = gpd.read_file(roads_url)
     except Exception as e:
-        raise RuntimeError(f"Error al cargar 'colombia_compiled_roads_network.geojson': {e}")
+        raise RuntimeError(f"Error al cargar 'roads_time_municipalities.json': {e}")
     
-    return gdf_muni, gdf_roads
+    # 2. Municipios Base de Colombia (Códigos y Geometría)
+    muni_url = f"{GITHUB_RAW_BASE}/colombia_municipalities_codes.geojson"
+    try:
+        gdf_muni = gpd.read_file(muni_url)
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar 'colombia_municipalities_codes.geojson': {e}")
+        
+    # 3. Municipios clasificados por tipo de vía (JSON de soporte)
+    road_type_url = f"{GITHUB_RAW_BASE}/municipalities_by_road_type.json"
+    try:
+        gdf_road_type = gpd.read_file(road_type_url)
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar 'municipalities_by_road_type.json': {e}")
+    
+    return gdf_roads, gdf_muni, gdf_road_type
 
 @st.cache_data
 def load_impact_dataset():
-    # 3. Dataset de Impacto Municipal (URL RAW Homogénea, cargada igual que los .geojson)
+    # 4. Dataset de Impacto Municipal (CSV) cargado homogéneamente
     impact_url = f"{GITHUB_RAW_BASE}/colombia_infrastructure_impact_dataset.csv"
     try:
         return pd.read_csv(impact_url)
@@ -55,21 +61,30 @@ def load_impact_dataset():
 
 # Carga segura con auditoría de errores específica
 try:
-    gdf_municipalities, gdf_compiled = load_geospatial_data()
+    gdf_compiled, gdf_municipalities, gdf_road_type_support = load_geospatial_data()
     df_impact = load_impact_dataset()
 except Exception as e:
     st.error(f"❌ {e}")
-    st.info("💡 Consejo: Asegúrate de que los tres archivos estén subidos directamente en la raíz de la rama 'main' de tu repositorio de GitHub con estos nombres exactos.")
     st.stop()
 
 # ==============================================================================
 # SECCIÓN 2: PROCESAMIENTO PREVIO Y CONSTANTES MUNICIPALES
 # ==============================================================================
 TOTAL_MUNI_COUNT = 1122
+
+# Acoplar clasificación de vías desde el JSON de soporte si existe la columna id_type
+if 'id_type' in gdf_road_type_support.columns and 'id_type' not in gdf_municipalities.columns:
+    # Asegurar unión por códigos municipales si comparten llave común
+    if 'Municipality_Code_DANE' in gdf_road_type_support.columns:
+        gdf_municipalities = gdf_municipalities.merge(
+            gdf_road_type_support[['Municipality_Code_DANE', 'id_type']], 
+            on='Municipality_Code_DANE', how='left'
+        )
+
 if 'id_type' in gdf_municipalities.columns:
     TOTAL_MUNI_WITH_ROADS = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
 else:
-    TOTAL_MUNI_WITH_ROADS = 500  # Valor fallback seguro
+    TOTAL_MUNI_WITH_ROADS = 500  # Fallback seguro
 
 # Extraer parámetros dinámicos para los filtros del Módulo 2
 unique_projects = ["All"] + sorted(list(gdf_compiled['PROYECTO'].dropna().unique())) if 'PROYECTO' in gdf_compiled.columns else ["All"]
@@ -124,7 +139,7 @@ with col_control:
             if val_year != 'All':
                 filtered_roads = filtered_roads[filtered_roads['oper_year'] == val_year]
 
-        gdf_complete = filtered_roads.dropna(subset=['pre_date', 'start_date', 'oper_date'])
+        gdf_complete = filtered_roads.dropna(subset=['pre_date', 'start_date', 'oper_date']) if not filtered_roads.empty else filtered_roads
         impacted_muni = gpd.GeoDataFrame()
         muni_list_data = pd.DataFrame()
 
@@ -195,7 +210,6 @@ with col_map:
 
     # --- PROCESO PARA GRÁFICAS DE IMPACTO TEMPORAL (MÓDULO 3) ---
     elif main_menu == "3. City Data Exploration":
-        # Diccionarios estructurados del Pipeline de Municipios
         categories_map = {
             'Educación': ['s11_total', 'alumn_total', 'docen_total'],
             'Servicios e Infraestructura': ['tacued', 'turbacued', 'truracued', 'talcan'],
@@ -225,7 +239,6 @@ with col_map:
         df_filtered = df_filtered.dropna(subset=['Project_Group']).copy()
         df_filtered['ano'] = df_filtered['ano'].astype(int)
 
-        # UI de Triple Filtro Jerárquico Horizontal nativo de Streamlit
         st.markdown("### 🎛️ Variables de Desarrollo Socioeconómico")
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -241,7 +254,6 @@ with col_map:
         unique_muns = df_plot['Municipality_Code_Dane'].unique()
         var_label_es = all_variables_map[selected_var_code]
 
-        # Creación de la gráfica de líneas interactiva (Plotly)
         fig = go.Figure()
         for idx, mun_code in enumerate(unique_muns):
             df_mun = df_plot[df_plot['Municipality_Code_Dane'] == mun_code].sort_values(by='ano')
@@ -334,7 +346,6 @@ with col_right:
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Detalles de Cobertura</div>", unsafe_allow_html=True)
         st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>Este panel consolida variables clave de los censos y registros del DANE e interconecta las métricas de educación y servicios públicos con el año de entrega del corredor vial correspondiente.</p>", unsafe_allow_html=True)
         
-        # Mini matriz con datos brutos para auditoría rápida
         if 'df_plot' in locals() and not df_plot.empty:
             with st.expander("🔍 Ver Matriz Numérica"):
                 st.dataframe(
