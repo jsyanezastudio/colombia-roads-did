@@ -99,7 +99,7 @@ def get_sorted_filters(_gdf_r, _gdf_m):
 
 unique_projects, years_list, global_spatial_hits = get_sorted_filters(gdf_compiled, gdf_municipalities)
 
-# CORRECCIÓN: Nombres exactos tal cual aparecen en las filas de tu base de datos
+# Exact project names in the database for Section 3
 corridor_options = [
     "Corridor Armenia - Pereira - Manizales (Eje Cafetero)",
     "Corridor Bogotá - La Vega - Villeta",
@@ -210,9 +210,9 @@ with col_control:
         
         muni_id_col = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_municipalities.columns else gdf_municipalities.columns[0]
         
-        # Match directo e insensible combinando minúsculas y eliminación de espacios en los extremos
+        # FIXED: Removed the invalid .str property call on the python raw text variable
         matched_hits = global_spatial_hits[
-            global_spatial_hits['PROYECTO'].str.lower().str.strip() == selected_corridor.lower().str.strip()
+            global_spatial_hits['PROYECTO'].str.lower().str.strip() == selected_corridor.lower().strip()
         ]
         project_muni_ids = matched_hits.index.unique()
         
@@ -336,7 +336,7 @@ with col_right:
             st.info("No municipalities found.")
 
     elif main_menu == "3. City Data Exploration":
-        # Renderizado correcto del mini mapa aislado en el costado superior derecho
+        # Isolated rendering for the selected project polygons
         if not gdf_corridor_muni.empty:
             fig_mini, ax_mini = plt.subplots(figsize=(4, 4))
             fig_mini.patch.set_facecolor('none')
@@ -353,7 +353,7 @@ with col_right:
         else:
             st.warning("No spatial intersections found for this project in the dataset.")
             
-        # Tabla de mapeo en el costado inferior derecho
+        # Dataframe list rendering beneath the mini layout map
         st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
         st.dataframe(
             corridor_list_data.rename(columns={muni_id_col: 'Code', 'Municipality_Name_DANE': 'Name'}),
