@@ -68,7 +68,7 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# SECTION 2: DATA PRE-PROCESSING & MERGING (Explicit Capitalization Fix)
+# SECTION 2: DATA PRE-PROCESSING & MERGING (Deduplication Fix Applied)
 # ==============================================================================
 TOTAL_MUNI_COUNT = 1122
 
@@ -84,6 +84,14 @@ if 'id_type' not in gdf_municipalities.columns:
     if 'Municipality_Code_DANE' in gdf_road_type_support.columns and 'Id_type' in gdf_road_type_support.columns:
         bridge_df = gdf_road_type_support[['Municipality_Code_DANE', 'Id_type']].copy()
         bridge_df = bridge_df.rename(columns={'Id_type': 'id_type'})
+        
+        # --- SOLUCIÓN AL DOBLE CONTEO / TRASLAPE OSCURO DE MUNICIPIOS ---
+        # Priorizamos registros que contengan calzadas dobles antes de remover duplicados por código DANE
+        bridge_df['is_doble'] = bridge_df['id_type'].str.lower().str.contains('doble|dual|2', na=False)
+        bridge_df = bridge_df.sort_values(by='is_doble', ascending=False)
+        bridge_df = bridge_df.drop_duplicates(subset=['Municipality_Code_DANE']).drop(columns=['is_doble'])
+        # ----------------------------------------------------------------
+        
         gdf_municipalities = gdf_municipalities.merge(bridge_df, on='Municipality_Code_DANE', how='left')
     else:
         gdf_municipalities['id_type'] = 'Sin vias'
@@ -91,9 +99,9 @@ if 'id_type' not in gdf_municipalities.columns:
 # Calculate metrics safely for visualizations based on standard classes
 if 'id_type' in gdf_municipalities.columns:
     gdf_municipalities['id_type'] = gdf_municipalities['id_type'].fillna('Sin vias')
-    # Count any entry with valid data (not 'Sin vias')
+    # Cuenta única estricta de municipios con red vial
     count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias'])
-    # Count entries specifically classified as double/dual lane
+    # Cuenta única estricta de municipios con doble calzada
     count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)])
     count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
     count_other_roads = count_any_roads - count_doble_roads
@@ -371,25 +379,4 @@ with col_right:
         if not gdf_zoom_muni.empty:
             gdf_zoom_muni.plot(ax=ax_zoom, facecolor='#1a5276', edgecolor='black', linewidth=0.5)
             # Clip bounds specifically targeting the highlighted cluster
-            minx, miny, maxx, maxy = gdf_zoom_muni.total_bounds
-            ax_zoom.set_xlim([minx - 0.4, maxx + 0.4])
-            ax_zoom.set_ylim([miny - 0.4, maxy + 0.4])
-            
-        ax_zoom.set_xticks([])
-        ax_zoom.set_yticks([])
-        for spine in ax_zoom.spines.values():
-            spine.set_color('#1a5276')
-            spine.set_linewidth(1.0)
-            
-        st.pyplot(fig_zoom, use_container_width=True)
-        
-        # BOTTOM SUBSECTION: Names and Codes Table Inventory
-        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top: 15px; margin-bottom: 5px;'>Corridor Municipalities Inventory</div>", unsafe_allow_html=True)
-        if not gdf_zoom_muni.empty:
-            df_muni_table = gdf_zoom_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
-            st.dataframe(
-                df_muni_table.rename(columns={'Municipality_Code_DANE': 'Code', 'Municipality_Name_DANE': 'Name'}),
-                hide_index=True, use_container_width=True, height=180
-            )
-        else:
-            st.info("No matching attributes found for current bounds.")
+            minx,
