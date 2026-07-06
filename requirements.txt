@@ -1,5 +1,6 @@
 streamlit
+geopandas
 pandas
 matplotlib
-pyarrow
-geopandas
+requests
+plotly
