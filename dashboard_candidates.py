@@ -58,10 +58,15 @@ def load_data():
     # Rename explicitly using 'Id_type' to create a clean 'id_type' column for the map layout
     df_road_type = df_road_type.rename(columns={df_key: 'muni_code_match', 'Id_type': 'id_type'})
     
-    # Drop duplicates to prevent row multiplication during merge
+    # --- SOLUCIÓN AL TRASLAPE OSCURO Y DOBLE CONTEO ---
+    # Un mismo municipio puede tener múltiples vías. Para evitar duplicar polígonos, 
+    # ordenamos priorizando las calzadas dobles ("Doble") y luego eliminamos códigos repetidos.
+    df_road_type['is_doble'] = df_road_type['id_type'].str.lower().str.contains('doble|dual|2', na=False)
+    df_road_type = df_road_type.sort_values(by='is_doble', ascending=False)
     df_road_type_clean = df_road_type[['muni_code_match', 'id_type']].drop_duplicates(subset=['muni_code_match'])
+    # --------------------------------------------------
     
-    # Final merge
+    # Final merge único sin multiplicar filas
     gdf_muni = gdf_muni.merge(df_road_type_clean, left_on=muni_key, right_on='muni_code_match', how='left')
     gdf_muni['id_type'] = gdf_muni['id_type'].fillna('Sin vías')
         
@@ -69,7 +74,7 @@ def load_data():
 
 gdf_compiled, gdf_municipalities, df_muni_road_type = load_data()
 
-# Pre-calculations for baseline constants
+# Pre-calculations for baseline constants (Garantiza que la suma total sea exactamente 1122 o la longitud real del GeoDataFrame)
 TOTAL_MUNI_COUNT = len(gdf_municipalities)
 ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
 TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
