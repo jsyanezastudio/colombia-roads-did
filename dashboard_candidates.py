@@ -99,11 +99,11 @@ def get_sorted_filters(_gdf_r, _gdf_m):
 
 unique_projects, years_list, global_spatial_hits = get_sorted_filters(gdf_compiled, gdf_municipalities)
 
-# Strict Corridor name alignment based on existing values in your GEOJSON_PATH
+# CORRECCIÓN: Nombres exactos tal cual aparecen en las filas de tu base de datos
 corridor_options = [
-    "Honda - Puerto Salgar - Girardot",
-    "Armenia - Pereira - Manizales",
-    "Bogotá - Villeta"
+    "Corridor Armenia - Pereira - Manizales (Eje Cafetero)",
+    "Corridor Bogotá - La Vega - Villeta",
+    "Corridor Honda - Puerto Salgar - Girardot"
 ]
 
 # ==============================================================================
@@ -202,18 +202,18 @@ with col_control:
 
     # --- LOGIC FOR MODULE 3 ---
     elif main_menu == "3. City Data Exploration":
-        # Dynamic filter using the specific projects available in your geospatial records
         selected_corridor = st.selectbox(
             "Select Corridor Project:",
             options=corridor_options,
             key="corridor_select"
         )
         
-        # Spatial cross-match filtering using the exact logic from Section 2
         muni_id_col = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_municipalities.columns else gdf_municipalities.columns[0]
         
-        # Match using substrings to protect against small text differences in project names
-        matched_hits = global_spatial_hits[global_spatial_hits['PROYECTO'].str.contains(selected_corridor, case=False, na=False)]
+        # Match directo e insensible combinando minúsculas y eliminación de espacios en los extremos
+        matched_hits = global_spatial_hits[
+            global_spatial_hits['PROYECTO'].str.lower().str.strip() == selected_corridor.lower().str.strip()
+        ]
         project_muni_ids = matched_hits.index.unique()
         
         gdf_corridor_muni = gdf_municipalities.loc[project_muni_ids]
@@ -260,7 +260,6 @@ with col_map:
         
         st.pyplot(fig_map, use_container_width=True)
     else:
-        # Section 3 clears out the central master map layout
         st.markdown(
             """
             <div style='text-align:center; padding: 40px; color: #7f8c8d; font-family: monospace; border: 2px dashed #bdc3c7; border-radius: 10px; margin-top: 50px;'>
@@ -337,12 +336,11 @@ with col_right:
             st.info("No municipalities found.")
 
     elif main_menu == "3. City Data Exploration":
-        # Upper visual block: Isolated project map
+        # Renderizado correcto del mini mapa aislado en el costado superior derecho
         if not gdf_corridor_muni.empty:
             fig_mini, ax_mini = plt.subplots(figsize=(4, 4))
             fig_mini.patch.set_facecolor('none')
             
-            # Isolated rendering matching the exact matplotlib structure of your template
             gdf_corridor_muni.plot(ax=ax_mini, facecolor='#1a5276', edgecolor='white', linewidth=0.8)
             
             ax_mini.set_title(
@@ -355,7 +353,7 @@ with col_right:
         else:
             st.warning("No spatial intersections found for this project in the dataset.")
             
-        # Lower visual block: Linked dataframe table
+        # Tabla de mapeo en el costado inferior derecho
         st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
         st.dataframe(
             corridor_list_data.rename(columns={muni_id_col: 'Code', 'Municipality_Name_DANE': 'Name'}),
