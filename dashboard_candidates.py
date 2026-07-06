@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
 
 # ==============================================================================
 # PAGE CONFIGURATION (Must be the first Streamlit command)
@@ -66,7 +68,7 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# SECTION 2: DATA PRE-PROCESSING & MERGING
+# SECTION 2: DATA PRE-PROCESSING & MERGING (Explicit Capitalization Fix)
 # ==============================================================================
 TOTAL_MUNI_COUNT = 1122
 
@@ -85,54 +87,21 @@ if 'id_type' not in gdf_municipalities.columns:
         
         gdf_municipalities = gdf_municipalities.merge(bridge_df, on='Municipality_Code_DANE', how='left')
     else:
-        gdf_municipalities['id_type'] = None
+        gdf_municipalities['id_type'] = 'Sin vias'
 
-# ADVANCED LOGIC FOR PIE CHARTS (Strictly splitting valid data universes)
+# Calculate metrics safely for visualizations based on standard classes
 if 'id_type' in gdf_municipalities.columns:
-    # 1. First target universe: Count actual entries that are not null, empty, or placeholder 'Sin vias'
-    valid_data_mask = gdf_municipalities['id_type'].notna() & (gdf_municipalities['id_type'] != '') & (gdf_municipalities['id_type'] != 'Sin vias')
-    gdf_with_data = gdf_municipalities[valid_data_mask]
-    
-    count_with_data = len(gdf_with_data)
-    count_without_data = max(0, TOTAL_MUNI_COUNT - count_with_data)
-    
-    # 2. Second target universe: Calculate subsets exclusively within the valid data population
-    if count_with_data > 0:
-        is_doble_mask = gdf_with_data['id_type'].astype(str).str.lower().str.contains('doble|dual|2', na=False)
-        count_doble_roads = len(gdf_with_data[is_doble_mask])
-        count_other_with_data = max(0, count_with_data - count_doble_roads)
-    else:
-        count_doble_roads, count_other_with_data = 0, 0
+    gdf_municipalities['id_type'] = gdf_municipalities['id_type'].fillna('Sin vias')
+    count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias'])
+    count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)])
+    count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
+    count_other_roads = count_any_roads - count_doble_roads
 else:
-    count_with_data, count_without_data, count_doble_roads, count_other_with_data = 500, 622, 150, 350
+    count_any_roads, count_doble_roads, count_no_roads, count_other_roads = 500, 150, 622, 350
 
 # Extract dynamic query boundaries for Module 2 dropdown selectors
 unique_projects = ["All"] + sorted(list(gdf_compiled['PROYECTO'].dropna().unique())) if 'PROYECTO' in gdf_compiled.columns else ["All"]
 years_list = ["All"] + sorted(list(gdf_compiled['oper_year'].dropna().astype(int).unique())) if 'oper_year' in gdf_compiled.columns else ["All"]
-
-# Static Mapping for Module 3 (Only Municipal Names and Identifiers needed)
-project_groups_mapping = {
-    "Corridor Honda - Puerto Salgar - Girardot": [
-        {"Code": "73275", "Name": "Flandes"},
-        {"Code": "25307", "Name": "Girardot"}
-    ],
-    "Corridor Armenia - Pereira - Manizales (Eje Cafetero)": [
-        {"Code": "17174", "Name": "Chinchina"},
-        {"Code": "17001", "Name": "Manizales"},
-        {"Code": "66001", "Name": "Pereira"},
-        {"Code": "63690", "Name": "Salento"},
-        {"Code": "66682", "Name": "Santa Rosa de Cabal"},
-        {"Code": "17873", "Name": "Villamaria"}
-    ],
-    "Corridor Bogotá - La Vega - Villeta": [
-        {"Code": "25402", "Name": "La Vega"},
-        {"Code": "25430", "Name": "Madrid"},
-        {"Code": "25489", "Name": "Nocaima"},
-        {"Code": "25491", "Name": "El Rosal"},
-        {"Code": "25658", "Name": "San Francisco"},
-        {"Code": "25769", "Name": "Subachoque"}
-    ]
-}
 
 # ==============================================================================
 # SECTION 3: DASHBOARD LAYOUT & COLUMNS STRUCTURING
@@ -207,10 +176,10 @@ with col_control:
 
     # --- MODULE 3 CONTROL ---
     elif main_menu == "3. City Data Exploration":
-        st.info("Module configuration enabled. Select corridors in the central workspace viewport.")
+        st.info("Interactive panel enabled. Adjust analytical dimensions directly in the central viewport section.")
 
 # ==============================================================================
-# SECTION 5: PRIMARY GEOSPATIAL MAPS AND STATIC REPOS (col_map)
+# SECTION 5: PRIMARY GEOSPATIAL MAPS AND PLOTLY CHARTS (col_map)
 # ==============================================================================
 with col_map:
     # --- STATIC GEOPANDAS RENDER PLOTS (MODULES 1 & 2) ---
@@ -222,12 +191,13 @@ with col_map:
         
         if main_menu == "1. Colombia Roads":
             if show_any_roads and 'id_type' in gdf_municipalities.columns:
-                muni_with_roads = gdf_municipalities[valid_data_mask] if 'valid_data_mask' in locals() else gdf_municipalities
+                muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias']
                 if not muni_with_roads.empty:
                     muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
             
             if show_doble_roads and 'id_type' in gdf_municipalities.columns:
-                muni_doble = gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)] if 'valid_data_mask' in locals() else gpd.GeoDataFrame()
+                # Match dynamically with mapped road classes
+                muni_doble = gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)]
                 if not muni_doble.empty:
                     muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
 
@@ -251,21 +221,74 @@ with col_map:
         
         st.pyplot(fig_map, use_container_width=True)
 
-    # --- TEXT-BASED EXCLUSIVE LISTING GRID (MODULE 3) ---
+    # --- PLOTLY HIGH-RESOLUTION INTERACTIVE CHARTS (MODULE 3) ---
     elif main_menu == "3. City Data Exploration":
-        st.markdown("### Strategic Highway Corridors Inventory")
-        selected_project = st.selectbox("Choose Core Corridor Architecture:", options=list(project_groups_mapping.keys()))
-        
-        st.markdown("---")
-        st.markdown(f"#### Municipalities assigned to: *{selected_project}*")
-        st.markdown("Below is the complete database registry containing exclusively the target corporate metadata identifiers:")
-        
-        # Build strict non-downloadable markdown table syntax
-        markdown_table = "| Municipality Code (DANE) | Municipality Name |\n| :--- | :--- |\n"
-        for item in project_groups_mapping[selected_project]:
-            markdown_table += f"| {item['Code']} | {item['Name']} |\n"
+        categories_map = {
+            'Education': ['s11_total', 'alumn_total', 'docen_total'],
+            'Services and Infrastructure': ['tacued', 'turbacued', 'truracued', 'talcan'],
+            'Fiscal and Impact': ['inv_total', 'TMI', 'y_total', 'y_corr']
+        }
+        all_variables_map = {
+            's11_total': 'Saber11 Standardized Score', 'alumn_total': 'Total Enrolled Students', 'docen_total': 'Total Active Teachers',
+            'tacued': 'Water Access Coverage (Total)', 'turbacued': 'Urban Water Coverage', 'truracued': 'Rural Water Coverage', 'talcan': 'Sewage Infrastructure Coverage',
+            'inv_total': 'Total Public Investment', 'TMI': 'Infant Mortality Rate', 'y_total': 'Total Municipal Revenues', 'y_corr': 'Current Operating Revenues'
+        }
+        project_groups_mapping = {
+            "Corridor Honda - Puerto Salgar - Girardot": [73275, 25307],
+            "Corridor Armenia - Pereira - Manizales (Eje Cafetero)": [17174, 17001, 66001, 63690, 66682, 17873],
+            "Corridor Bogotá - La Vega - Villeta": [25402, 25430, 25489, 25491, 25658, 25769]
+        }
+        mun_color_pairs = [
+            ('#1A5276', '#5DADE2'), ('#1E8449', '#58D68D'), ('#A93226', '#E74C3C'), 
+            ('#7D3C98', '#BB8FCE'), ('#B05C00', '#F39C12'), ('#2C3E50', '#7F8C8D')
+        ]
+
+        df_filtered = df_impact.copy()
+        def assign_group(code):
+            for g_name, codes in project_groups_mapping.items():
+                if code in codes: return g_name
+            return None
+        df_filtered['Project_Group'] = df_filtered['Municipality_Code_Dane'].apply(assign_group)
+        df_filtered = df_filtered.dropna(subset=['Project_Group']).copy()
+        df_filtered['ano'] = df_filtered['ano'].astype(int)
+
+        st.markdown("### Socioeconomic Development Indicators")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            selected_project = st.selectbox("1. Core Strategic Highway Corridor:", options=list(project_groups_mapping.keys()))
+        with c2:
+            selected_category = st.selectbox("2. Analytical Dimension:", options=list(categories_map.keys()))
+        with c3:
+            available_cols = categories_map[selected_category]
+            available_opts = {col: all_variables_map[col] for col in available_cols}
+            selected_var_code = st.selectbox("3. Granular Metric Target:", options=list(available_opts.keys()), format_func=lambda x: available_opts[x])
+
+        df_plot = df_filtered[df_filtered['Project_Group'] == selected_project].copy()
+        unique_muns = df_plot['Municipality_Code_Dane'].unique()
+        var_label_en = all_variables_map[selected_var_code]
+
+        fig = go.Figure()
+        for idx, mun_code in enumerate(unique_muns):
+            df_mun = df_plot[df_plot['Municipality_Code_Dane'] == mun_code].sort_values(by='ano')
+            if df_mun[selected_var_code].isna().all(): continue
             
-        st.markdown(markdown_table)
+            s_col, e_col = mun_color_pairs[idx % len(mun_color_pairs)]
+            colors_sampled = px.colors.sample_colorscale([s_col, e_col], [0.5])
+            
+            fig.add_trace(go.Scatter(
+                x=df_mun['ano'], y=df_mun[selected_var_code], mode='lines+markers',
+                name=f'Muni DANE {mun_code}', line=dict(color=colors_sampled[0], width=2.5),
+                hovertemplate=f'<b>Year</b>: %{{x}}<br><b>{var_label_en}</b>: %{{y:.2f}}<extra></extra>'
+            ))
+
+        fig.update_layout(
+            title=f"Evolution Trend: {var_label_en} ({selected_project})", xaxis_title="Year", yaxis_title=var_label_en,
+            hovermode='x unified', template="plotly_white", height=520, margin=dict(t=60, b=30, l=40, r=40)
+        )
+        fig.update_xaxes(tickformat=".0f", dtick=1, gridcolor="#F2F4F4")
+        fig.update_yaxes(gridcolor="#F2F4F4")
+        
+        st.plotly_chart(fig, use_container_width=True)
 
 # ==============================================================================
 # SECTION 6: DESCRIPTIVE STATISTICS & META-DATA EXPANDERS (col_right)
@@ -277,21 +300,19 @@ with col_right:
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none')
         
-        # Pie 1: Municipalities with data registry vs national absolute remainder
-        v1 = [count_with_data, max(0.1, count_without_data)]
-        ax1.pie(v1, labels=['Municipalities with Data', 'Municipalities without Data'], 
+        v1 = [count_any_roads, max(0.1, count_no_roads)]
+        ax1.pie(v1, labels=['With Roads', 'No Roads'], 
                 autopct=lambda pct: absolute_value_format(pct, v1), 
                 colors=['#f4d03f', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Pie 2: Ratio of Doble (Dual Carriageway) calculated strictly out of the known registry
-        v2 = [count_doble_roads, max(0.1, count_other_with_data)]
-        ax2.pie(v2, labels=['Dual Carriageway (Doble)', 'Other Roads with Data'], 
+        v2 = [count_doble_roads, max(0.1, count_other_roads)]
+        ax2.pie(v2, labels=['Dual (Doble)', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v2), 
                 colors=['#27ae60', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
-        ax2.set_title("Dual vs Road Network Data", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        ax2.set_title("Dual vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
@@ -309,7 +330,7 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        total_eligible_network = count_with_data if count_with_data > 0 else 500
+        total_eligible_network = count_any_roads if count_any_roads > 0 else 500
         v4 = [selected_count, max(0.1, total_eligible_network - selected_count)]
         ax2.pie(v4, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v4), 
@@ -332,4 +353,13 @@ with col_right:
 
     elif main_menu == "3. City Data Exploration":
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Coverage Overview</div>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>This exploration frame lists the specific geographical targets assigned to Colombia's main primary highway development projects, interlinking baseline spatial assets to their official administrative DANE registry codes.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>This analytical frame aggregates key public panel metrics from DANE censuses, interlinking education indices, health outcomes, and structural investments around the target highway operational timeline.</p>", unsafe_allow_html=True)
+        
+        if 'df_plot' in locals() and not df_plot.empty:
+            with st.expander("🔍 Inspect Tabular Matrix"):
+                st.dataframe(
+                    df_plot[['Municipality_Code_Dane', 'ano', selected_var_code]]
+                    .rename(columns={'Municipality_Code_Dane': 'Muni', 'ano': 'Year', selected_var_code: 'Value'})
+                    .dropna(),
+                    hide_index=True, height=250
+                )
