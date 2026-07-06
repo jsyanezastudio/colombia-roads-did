@@ -74,7 +74,7 @@ TOTAL_MUNI_COUNT = len(gdf_municipalities)
 ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
 TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
 
-# Funciones helper para mostrar valores absolutos en los gráficos de torta
+# Helper function to display absolute counts in pie charts
 def absolute_value_format(val, allvals):
     import numpy as np
     a = int(np.round(val/100.*sum(allvals)))
@@ -98,6 +98,13 @@ def get_sorted_filters(_gdf_r, _gdf_m):
     return sorted_projects, sorted_years
 
 unique_projects, years_list = get_sorted_filters(gdf_compiled, gdf_municipalities)
+
+# Dictionary mapping for Section 3 Corridor Analysis
+project_groups_mapping = {
+    "Corridor Honda - Puerto Salgar - Girardot": [73275, 25307],
+    "Corridor Armenia - Pereira - Manizales (Eje Cafetero)": [17174, 17001, 66001, 63690, 66682, 17873],
+    "Corridor Bogotá - La Vega - Villeta": [25402, 25430, 25489, 25491, 25658, 25769]
+}
 
 # ==============================================================================
 # SECTION 4: HEADER DISPLAY BLOCK
@@ -180,7 +187,6 @@ with col_control:
             unsafe_allow_html=True
         )
 
-        # Dynamic Year Card restored for Project selection mode
         if is_project_mode:
             active_years = sorted(filtered_roads['oper_year'].dropna().unique().astype(int))
             years_str = ", ".join(map(str, active_years)) if active_years else "All / NA"
@@ -196,54 +202,70 @@ with col_control:
 
     # --- LOGIC FOR MODULE 3 ---
     elif main_menu == "3. City Data Exploration":
-        st.info("City Data Exploration module under development.")
+        selected_corridor = st.selectbox(
+            "Select Corridor Project:",
+            options=list(project_groups_mapping.keys()),
+            key="corridor_select"
+        )
+        
+        # Extract predefined codes and match strictly to base map geometries
+        target_codes = [str(code) for code in project_groups_mapping[selected_corridor]]
+        muni_id_col = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_municipalities.columns else gdf_municipalities.columns[0]
+        
+        gdf_corridor_muni = gdf_municipalities[gdf_municipalities[muni_id_col].astype(str).isin(target_codes)]
+        corridor_list_data = gdf_corridor_muni[[muni_id_col, 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
 
 # ==============================================================================
 # SECTION 7: GEOSPATIAL MAP PLOTTING GENERATION (col_map)
 # ==============================================================================
 with col_map:
-    # Ajuste dinámico de tamaño para la sección 3 (Mapa más pequeño)
-    if main_menu == "3. City Data Exploration":
-        fig_map, ax_map = plt.subplots(figsize=(5, 6))
-    else:
+    if main_menu != "3. City Data Exploration":
         fig_map, ax_map = plt.subplots(figsize=(9, 11))
-    
-    # Render base background
-    gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
-    
-    if main_menu == "1. Colombia Roads":
-        # Yellow Layer: id_type != 'Sin vías'
-        if show_any_roads and 'id_type' in gdf_municipalities.columns:
-            muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías']
-            if not muni_with_roads.empty:
-                muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
         
-        # Green Layer: id_type == 'Doble'
-        if show_doble_roads and 'id_type' in gdf_municipalities.columns:
-            muni_doble = gdf_municipalities[gdf_municipalities['id_type'] == 'Doble']
-            if not muni_doble.empty:
-                muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
-
-    elif main_menu == "2. DiD Candidates":
-        if not impacted_muni.empty: 
-            impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
-        if not filtered_roads.empty: 
-            filtered_roads.plot(ax=ax_map, color='#5dade2', linewidth=0.8, alpha=0.5)
-        if not gdf_complete.empty: 
-            gdf_complete.plot(ax=ax_map, color='#cb4335', linewidth=1.5)
-
-    # Map framing and aesthetics
-    for spine in ax_map.spines.values(): 
-        spine.set_visible(True)
-        spine.set_color('#1a5276')
-        spine.set_linewidth(2.0)
+        # Render base background map
+        gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
         
-    ax_map.set_xticks([])
-    ax_map.set_yticks([])
-    ax_map.set_xlim([-79.5, -66.5])
-    ax_map.set_ylim([-4.5, 13.5])
-    
-    st.pyplot(fig_map, use_container_width=True)
+        if main_menu == "1. Colombia Roads":
+            if show_any_roads and 'id_type' in gdf_municipalities.columns:
+                muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías']
+                if not muni_with_roads.empty:
+                    muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
+            
+            if show_doble_roads and 'id_type' in gdf_municipalities.columns:
+                muni_doble = gdf_municipalities[gdf_municipalities['id_type'] == 'Doble']
+                if not muni_doble.empty:
+                    muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
+
+        elif main_menu == "2. DiD Candidates":
+            if not impacted_muni.empty: 
+                impacted_muni.plot(ax=ax_map, facecolor='#d4e6f1', edgecolor='black', linewidth=0.4, alpha=0.6)
+            if not filtered_roads.empty: 
+                filtered_roads.plot(ax=ax_map, color='#5dade2', linewidth=0.8, alpha=0.5)
+            if not gdf_complete.empty: 
+                gdf_complete.plot(ax=ax_map, color='#cb4335', linewidth=1.5)
+
+        for spine in ax_map.spines.values(): 
+            spine.set_visible(True)
+            spine.set_color('#1a5276')
+            spine.set_linewidth(2.0)
+            
+        ax_map.set_xticks([])
+        ax_map.set_yticks([])
+        ax_map.set_xlim([-79.5, -66.5])
+        ax_map.set_ylim([-4.5, 13.5])
+        
+        st.pyplot(fig_map, use_container_width=True)
+    else:
+        # Section 3 removes the master map from the center column
+        st.markdown(
+            """
+            <div style='text-align:center; padding: 40px; color: #7f8c8d; font-family: monospace; border: 2px dashed #bdc3c7; border-radius: 10px; margin-top: 50px;'>
+                <h4>Corridor Display Mode Active</h4>
+                <p>The visual graphics and isolated layout configurations have moved to the Right Analytics Panel.</p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
 # ==============================================================================
 # SECTION 8: RIGHT PANEL VISUALIZATIONS & CHARTS (col_right)
@@ -252,7 +274,6 @@ with col_right:
     if main_menu == "1. Colombia Roads" and 'id_type' in gdf_municipalities.columns:
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Infrastructure Breakdown</div>", unsafe_allow_html=True)
         
-        # Extract metrics directly from our structural dataset containing the mapped keys
         count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías'])
         count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'] == 'Doble'])
         count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
@@ -261,7 +282,6 @@ with col_right:
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none')
         
-        # Pie 1: Municipalities with Roads vs National Total (Valores Absolutos)
         v1 = [count_any_roads, max(0.1, count_no_roads)]
         ax1.pie(v1, labels=['With Roads', 'No Roads'], 
                 autopct=lambda pct: absolute_value_format(pct, v1), 
@@ -269,7 +289,6 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("Road Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Pie 2: Dual Carriageways vs Total Municipalities with Roads (Valores Absolutos)
         v2 = [count_doble_roads, max(0.1, count_other_roads)]
         ax2.pie(v2, labels=['Dual (Doble)', 'Other Types'], 
                 autopct=lambda pct: absolute_value_format(pct, v2), 
@@ -286,7 +305,6 @@ with col_right:
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 4.5))
         fig_pies.patch.set_facecolor('none') 
         
-        # Pie 1: Selected vs National Total (Valores Absolutos)
         v3 = [selected_count, max(0.1, TOTAL_MUNI_COUNT - selected_count)]
         ax1.pie(v3, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v3), 
@@ -294,7 +312,6 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
-        # Pie 2: Selected vs Road Network Total (Valores Absolutos)
         v4 = [selected_count, max(0.1, TOTAL_MUNI_WITH_ROADS - selected_count)]
         ax2.pie(v4, labels=['Selected', 'Other'], 
                 autopct=lambda pct: absolute_value_format(pct, v4), 
@@ -305,21 +322,39 @@ with col_right:
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
         
-        # Lista de Municipios reincorporada abajo de las tortas estadísticas
         st.markdown("---")
         st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Impacted Municipalities List</div>", unsafe_allow_html=True)
         if not muni_list_data.empty:
             st.dataframe(
-                muni_list_data.rename(columns={
-                    'Municipality_Code_DANE': 'Code',
-                    'Municipality_Name_DANE': 'Name'
-                }),
-                hide_index=True,
-                use_container_width=True,
-                height=250
+                muni_list_data.rename(columns={'Municipality_Code_DANE': 'Code', 'Municipality_Name_DANE': 'Name'}),
+                hide_index=True, use_container_width=True, height=250
             )
         else:
-            st.info("No municipalities found for this selection.")
-        
-    else:
-        st.markdown("<div style='color: #999; text-align: center; margin-top: 20px; font-family: monospace;'>No active visuals.</div>", unsafe_allow_html=True)
+            st.info("No municipalities found.")
+
+    elif main_menu == "3. City Data Exploration":
+        # Render dynamic corridor map in the upper part of the right panel
+        if not gdf_corridor_muni.empty:
+            fig_mini, ax_mini = plt.subplots(figsize=(4, 4))
+            fig_mini.patch.set_facecolor('none')
+            
+            gdf_corridor_muni.plot(ax=ax_mini, facecolor='#1a5276', edgecolor='white', linewidth=0.8)
+            
+            ax_mini.set_title(
+                f"{selected_corridor}\n({len(gdf_corridor_muni)} municipalities)", 
+                fontsize=8, fontweight='bold', family='monospace', color='#1a5276'
+            )
+            ax_mini.set_axis_off()
+            plt.tight_layout()
+            st.pyplot(fig_mini, use_container_width=True)
+        else:
+            st.warning("No geographic features matched the specified IDs.")
+            
+        # Render corresponding table in the lower part of the right panel
+        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
+        st.dataframe(
+            corridor_list_data.rename(columns={muni_id_col: 'Code', 'Municipality_Name_DANE': 'Name'}),
+            hide_index=True,
+            use_container_width=True,
+            height=280
+        )
