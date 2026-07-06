@@ -118,11 +118,18 @@ project_groups_mapping = {
 # ==============================================================================
 # SECTION 4: HEADER DISPLAY BLOCK
 # ==============================================================================
+# Título principal escalado a 32px (font-weight: 800) y subtítulo personalizado integrado
 st.markdown(
     """
-    <div style='text-align:center; padding: 15px; background-color: #1a5276; color: white; border-radius: 8px; margin-bottom: 20px; font-family: monospace;'>
-        <h1 style='margin:0; font-size: 24px; font-weight: bold; color: white !important;'>Colombia Road Infrastructure Analytics Platform</h1>
-        <p style='margin:5px 0 0 0; opacity: 0.8; font-size: 12px; color: white !important;'>Geospatial Analysis Base Layer & DiD Treatment Evaluation</p>
+    <div style='text-align:center; padding: 20px 15px; background-color: #1a5276; color: white; border-radius: 8px; margin-bottom: 20px; font-family: monospace;'>
+        <h1 style='margin: 0 0 10px 0; font-size: 32px; font-weight: 800; color: white !important; letter-spacing: -0.5px;'>
+            Colombia Road Infrastructure Analytics Platform
+        </h1>
+        <p style='margin: 0 auto; opacity: 0.9; font-size: 13.5px; color: white !important; max-width: 85%; line-height: 1.4; font-weight: 500;'>
+            Visualizes multi-layered municipal and road datasets. 
+            Evaluates treatment trends over dynamic operational timelines. 
+            Provides empirical baseline data for impact models.
+        </p>
     </div>
     """, 
     unsafe_allow_html=True
@@ -192,7 +199,6 @@ with col_control:
         )
 
     elif main_menu == "3. Municipality Data Exploration":
-        # Leyenda de advertencia con fuente achicada de manera sutil (font-size: 11px)
         st.markdown(
             """
             <div style='background-color: #ebf5fb; color: #2e4053; font-size: 11px; padding: 10px; border-radius: 5px; border-left: 3px solid #3498db;'>
@@ -201,7 +207,7 @@ with col_control:
             """, unsafe_allow_html=True
         )
 
-    # Modificación de fuentes: Descripción del módulo agrandada a font-size: 15px para jerarquía limpia
+    # Descripciones del módulo (fijadas de forma legible en font-size: 15px)
     st.markdown("---")
     st.markdown("### Module Description")
     if main_menu == "1. Colombia Roads":
@@ -378,7 +384,7 @@ with col_right:
 
     elif main_menu == "3. Municipality Data Exploration":
         # --------------------------------------------------------------------------
-        # SECCIÓN 3: COMPONENTES DINÁMICOS DE LA COLUMNA DERECHA (FIJADOS MEDIANTE SJOIN)
+        # SECCIÓN 3: COMPONENTES DINÁMICOS DE LA COLUMNA DERECHA
         # --------------------------------------------------------------------------
         st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Project Corridor Zoom</div>", unsafe_allow_html=True)
         
@@ -397,7 +403,7 @@ with col_right:
             unsafe_allow_html=True
         )
         
-        # Intersección espacial nativa para obtener polígonos exactos sin depender de tipados de ID
+        # Intersección espacial robusta para obtener los polígonos correctos
         spatial_hits = gpd.sjoin(gdf_municipalities, gdf_project_roads, how="inner", predicate="intersects")
         
         fig_zoom, ax_zoom = plt.subplots(figsize=(4, 4))
@@ -413,7 +419,7 @@ with col_right:
             ax_zoom.set_xlim([minx - 0.4, maxx + 0.4])
             ax_zoom.set_ylim([miny - 0.4, maxy + 0.4])
         else:
-            # Fallback seguro por lista dura si el sjoin espacial fallara en alguna máquina local
+            # Fallback seguro por lista dura si falla la intersección espacial
             target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
             gdf_zoom_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
             if not gdf_zoom_muni.empty:
@@ -426,7 +432,7 @@ with col_right:
         plt.tight_layout()
         st.pyplot(fig_zoom, use_container_width=True)
         
-        # Renderizado robusto de la tabla estructurada: Municipio y Código
+        # Renderizado de la tabla con las columnas solicitadas: Municipio y Código
         st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top:12px; margin-bottom: 5px;'>Corridor Group Mapping</div>", unsafe_allow_html=True)
         
         if not spatial_hits.empty:
@@ -436,7 +442,7 @@ with col_right:
                 hide_index=True, use_container_width=True, height=220
             )
         else:
-            # Fallback seguro para la tabla usando los códigos explícitos estructurados
+            # Fallback para la tabla usando los códigos explícitos estructurados
             target_codes = [str(c) for c in project_groups_mapping[selected_project]["codes"]]
             gdf_table_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].astype(str).isin(target_codes)]
             if not gdf_table_muni.empty:
