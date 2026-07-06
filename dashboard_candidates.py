@@ -23,30 +23,43 @@ def absolute_value_format(val, allvals):
 # ==============================================================================
 # SECCIÓN 1: INGESTIÓN Y CACHÉ DE DATOS (URLs Oficiales del Repositorio)
 # ==============================================================================
+# Base común para transformar enlaces tipo 'blob/main' en contenido bruto (RAW)
+GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main"
+
 @st.cache_data
 def load_geospatial_data():
-    # 1. Municipios Base de Colombia
-    muni_url = "https://github.com/jsyanezastudio/colombia-roads-did/raw/refs/heads/main/colombia_municipalities_base.geojson"
-    gdf_muni = gpd.read_file(muni_url)
+    # 1. Municipios Base de Colombia (URL RAW Homogénea)
+    muni_url = f"{GITHUB_RAW_BASE}/colombia_municipalities_base.geojson"
+    try:
+        gdf_muni = gpd.read_file(muni_url)
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar 'colombia_municipalities_base.geojson': {e}")
     
-    # 2. Red de Vías Compiladas (Líneas)
-    roads_url = "https://github.com/jsyanezastudio/colombia-roads-did/raw/refs/heads/main/colombia_compiled_roads_network.geojson"
-    gdf_roads = gpd.read_file(roads_url)
+    # 2. Red de Vías Compiladas (URL RAW Homogénea)
+    roads_url = f"{GITHUB_RAW_BASE}/colombia_compiled_roads_network.geojson"
+    try:
+        gdf_roads = gpd.read_file(roads_url)
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar 'colombia_compiled_roads_network.geojson': {e}")
     
     return gdf_muni, gdf_roads
 
 @st.cache_data
 def load_impact_dataset():
-    # 3. Dataset de Impacto Municipal (Panel de Series de Tiempo)
-    impact_url = "https://github.com/jsyanezastudio/colombia-roads-did/raw/refs/heads/main/colombia_infrastructure_impact_dataset.csv"
-    return pd.read_csv(impact_url)
+    # 3. Dataset de Impacto Municipal (URL RAW Homogénea, cargada igual que los .geojson)
+    impact_url = f"{GITHUB_RAW_BASE}/colombia_infrastructure_impact_dataset.csv"
+    try:
+        return pd.read_csv(impact_url)
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar 'colombia_infrastructure_impact_dataset.csv': {e}")
 
-# Carga segura de los datos corporativos
+# Carga segura con auditoría de errores específica
 try:
     gdf_municipalities, gdf_compiled = load_geospatial_data()
     df_impact = load_impact_dataset()
 except Exception as e:
-    st.error(f"❌ Error crítico al conectar con el repositorio de datos de GitHub: {e}")
+    st.error(f"❌ {e}")
+    st.info("💡 Consejo: Asegúrate de que los tres archivos estén subidos directamente en la raíz de la rama 'main' de tu repositorio de GitHub con estos nombres exactos.")
     st.stop()
 
 # ==============================================================================
