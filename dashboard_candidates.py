@@ -4,7 +4,6 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
-import requests
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA (Debe ser la primera instrucción de Streamlit)
