@@ -1,4 +1,4 @@
-import streamlit as pd
+import streamlit as st
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -9,7 +9,6 @@ import requests
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA (Debe ser la primera instrucción de Streamlit)
 # ==============================================================================
-st.set_page_scale = "wide"  # Layout expandido para dar espacio a mapas y gráficas
 st.set_page_config(
     page_title="Colombia Infrastructure & Impact Dashboard",
     page_icon="🇨🇴",
