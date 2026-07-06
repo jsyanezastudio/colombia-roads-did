@@ -84,7 +84,6 @@ if 'id_type' not in gdf_municipalities.columns:
     if 'Municipality_Code_DANE' in gdf_road_type_support.columns and 'Id_type' in gdf_road_type_support.columns:
         bridge_df = gdf_road_type_support[['Municipality_Code_DANE', 'Id_type']].copy()
         bridge_df = bridge_df.rename(columns={'Id_type': 'id_type'})
-        
         gdf_municipalities = gdf_municipalities.merge(bridge_df, on='Municipality_Code_DANE', how='left')
     else:
         gdf_municipalities['id_type'] = 'Sin vias'
@@ -92,7 +91,9 @@ if 'id_type' not in gdf_municipalities.columns:
 # Calculate metrics safely for visualizations based on standard classes
 if 'id_type' in gdf_municipalities.columns:
     gdf_municipalities['id_type'] = gdf_municipalities['id_type'].fillna('Sin vias')
+    # Count any entry with valid data (not 'Sin vias')
     count_any_roads = len(gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vias'])
+    # Count entries specifically classified as double/dual lane
     count_doble_roads = len(gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)])
     count_no_roads = TOTAL_MUNI_COUNT - count_any_roads
     count_other_roads = count_any_roads - count_doble_roads
@@ -102,6 +103,13 @@ else:
 # Extract dynamic query boundaries for Module 2 dropdown selectors
 unique_projects = ["All"] + sorted(list(gdf_compiled['PROYECTO'].dropna().unique())) if 'PROYECTO' in gdf_compiled.columns else ["All"]
 years_list = ["All"] + sorted(list(gdf_compiled['oper_year'].dropna().astype(int).unique())) if 'oper_year' in gdf_compiled.columns else ["All"]
+
+# Pre-declared variables for multi-column mapping integrity
+project_groups_mapping = {
+    "Corridor Honda - Puerto Salgar - Girardot": [73275, 25307],
+    "Corridor Armenia - Pereira - Manizales (Eje Cafetero)": [17174, 17001, 66001, 63690, 66682, 17873],
+    "Corridor Bogotá - La Vega - Villeta": [25402, 25430, 25489, 25491, 25658, 25769]
+}
 
 # ==============================================================================
 # SECTION 3: DASHBOARD LAYOUT & COLUMNS STRUCTURING
@@ -196,7 +204,6 @@ with col_map:
                     muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
             
             if show_doble_roads and 'id_type' in gdf_municipalities.columns:
-                # Match dynamically with mapped road classes
                 muni_doble = gdf_municipalities[gdf_municipalities['id_type'].str.lower().str.contains('doble|dual|2', na=False)]
                 if not muni_doble.empty:
                     muni_doble.plot(ax=ax_map, facecolor='#27ae60', edgecolor='black', linewidth=0.3, alpha=0.8)
@@ -232,11 +239,6 @@ with col_map:
             's11_total': 'Saber11 Standardized Score', 'alumn_total': 'Total Enrolled Students', 'docen_total': 'Total Active Teachers',
             'tacued': 'Water Access Coverage (Total)', 'turbacued': 'Urban Water Coverage', 'truracued': 'Rural Water Coverage', 'talcan': 'Sewage Infrastructure Coverage',
             'inv_total': 'Total Public Investment', 'TMI': 'Infant Mortality Rate', 'y_total': 'Total Municipal Revenues', 'y_corr': 'Current Operating Revenues'
-        }
-        project_groups_mapping = {
-            "Corridor Honda - Puerto Salgar - Girardot": [73275, 25307],
-            "Corridor Armenia - Pereira - Manizales (Eje Cafetero)": [17174, 17001, 66001, 63690, 66682, 17873],
-            "Corridor Bogotá - La Vega - Villeta": [25402, 25430, 25489, 25491, 25658, 25769]
         }
         mun_color_pairs = [
             ('#1A5276', '#5DADE2'), ('#1E8449', '#58D68D'), ('#A93226', '#E74C3C'), 
@@ -300,6 +302,7 @@ with col_right:
         fig_pies, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 5))
         fig_pies.patch.set_facecolor('none')
         
+        # Pie 1: Entries with data/routes vs Municipalities without routes
         v1 = [count_any_roads, max(0.1, count_no_roads)]
         ax1.pie(v1, labels=['With Roads', 'No Roads'], 
                 autopct=lambda pct: absolute_value_format(pct, v1), 
@@ -307,12 +310,13 @@ with col_right:
                 textprops={'fontsize': 8, 'family': 'monospace'})
         ax1.set_title("Network vs National Total", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
+        # Pie 2: Inside entries with data -> Double/Dual vs others
         v2 = [count_doble_roads, max(0.1, count_other_roads)]
-        ax2.pie(v2, labels=['Dual (Doble)', 'Other'], 
+        ax2.pie(v2, labels=['Dual (Doble)', 'Other Types'], 
                 autopct=lambda pct: absolute_value_format(pct, v2), 
                 colors=['#27ae60', '#eeeeee'], startangle=90, 
                 textprops={'fontsize': 8, 'family': 'monospace'})
-        ax2.set_title("Dual vs Road Network", fontsize=9, family='monospace', color='#1a5276', weight='bold')
+        ax2.set_title("Dual vs Active Road Dataset", fontsize=9, family='monospace', color='#1a5276', weight='bold')
         
         plt.tight_layout()
         st.pyplot(fig_pies, use_container_width=True)
@@ -352,14 +356,40 @@ with col_right:
             st.info("No municipal intersections match the selected query criteria.")
 
     elif main_menu == "3. City Data Exploration":
-        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Coverage Overview</div>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:12px; font-family:monospace; margin-top:10px;'>This analytical frame aggregates key public panel metrics from DANE censuses, interlinking education indices, health outcomes, and structural investments around the target highway operational timeline.</p>", unsafe_allow_html=True)
+        # TOP SUBSECTION: Regional Map Zoom
+        st.markdown("<div style='background:#1a5276; color:white; padding:8px; font-weight:bold; border-radius:5px; font-family: monospace; font-size:12px; text-align:center;'>Corridor Geospatial Zoom</div>", unsafe_allow_html=True)
         
-        if 'df_plot' in locals() and not df_plot.empty:
-            with st.expander("🔍 Inspect Tabular Matrix"):
-                st.dataframe(
-                    df_plot[['Municipality_Code_Dane', 'ano', selected_var_code]]
-                    .rename(columns={'Municipality_Code_Dane': 'Muni', 'ano': 'Year', selected_var_code: 'Value'})
-                    .dropna(),
-                    hide_index=True, height=250
-                )
+        # Filter spatial layer to match targets based on current dropdown selection
+        target_codes = [str(code) for code in project_groups_mapping[selected_project]]
+        gdf_zoom_muni = gdf_municipalities[gdf_municipalities['Municipality_Code_DANE'].isin(target_codes)]
+        
+        fig_zoom, ax_zoom = plt.subplots(figsize=(3.5, 3.5))
+        fig_zoom.patch.set_facecolor('none')
+        
+        # Plot gray baseline context and highlight targeted corridor nodes
+        gdf_municipalities.plot(ax=ax_zoom, facecolor='#f4f4f4', edgecolor='#dddddd', linewidth=0.2)
+        if not gdf_zoom_muni.empty:
+            gdf_zoom_muni.plot(ax=ax_zoom, facecolor='#1a5276', edgecolor='black', linewidth=0.5)
+            # Clip bounds specifically targeting the highlighted cluster
+            minx, miny, maxx, maxy = gdf_zoom_muni.total_bounds
+            ax_zoom.set_xlim([minx - 0.4, maxx + 0.4])
+            ax_zoom.set_ylim([miny - 0.4, maxy + 0.4])
+            
+        ax_zoom.set_xticks([])
+        ax_zoom.set_yticks([])
+        for spine in ax_zoom.spines.values():
+            spine.set_color('#1a5276')
+            spine.set_linewidth(1.0)
+            
+        st.pyplot(fig_zoom, use_container_width=True)
+        
+        # BOTTOM SUBSECTION: Names and Codes Table Inventory
+        st.markdown("<div style='font-family: monospace; font-size: 11px; font-weight: bold; color: #1a5276; margin-top: 15px; margin-bottom: 5px;'>Corridor Municipalities Inventory</div>", unsafe_allow_html=True)
+        if not gdf_zoom_muni.empty:
+            df_muni_table = gdf_zoom_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
+            st.dataframe(
+                df_muni_table.rename(columns={'Municipality_Code_DANE': 'Code', 'Municipality_Name_DANE': 'Name'}),
+                hide_index=True, use_container_width=True, height=180
+            )
+        else:
+            st.info("No matching attributes found for current bounds.")
