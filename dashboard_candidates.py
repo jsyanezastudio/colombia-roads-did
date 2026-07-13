@@ -146,7 +146,10 @@ with col_control:
     st.markdown("### Main Menu")
     main_menu = st.selectbox(
         "Select View Module:",
-        options=["1. Colombia Roads", "2. Municipalities with Projects", "3. Municipality Data Exploration"]
+        options=["1. Colombia Roads", 
+        "2. Municipalities with Projects", 
+        "3. Municipality Data Exploration",
+        "4. Impact vs Control Analysis"]
     )
     
     st.markdown("---")
