@@ -17,32 +17,72 @@ st.set_page_config(
 # ==============================================================================
 # SECTION 2: DATA LOADING & OPTIMIZATION (CACHING)
 # ==============================================================================
-# URL actualizada al archivo real
-IMPACT_DATA_URL = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/refs/heads/main/merged_colombia_data.csv"
+GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main"
+GEOJSON_PATH = f"{GITHUB_RAW_BASE}/roads_time_municipalities.json"
+MUNICIPALITIES_PATH = f"{GITHUB_RAW_BASE}/colombia_municipalities_codes.geojson"
+ROAD_TYPE_MUNI_PATH = f"{GITHUB_RAW_BASE}/municipalities_by_road_type.json"
 
 @st.cache_data
 def load_data():
-    # ... (carga de gdf_roads y gdf_muni original) ...
+    gdf_roads = gpd.read_file(GEOJSON_PATH)
+    gdf_muni = gpd.read_file(MUNICIPALITIES_PATH)
     
-    # Carga del nuevo dataset unificado
-    df_impact = pd.read_csv(IMPACT_DATA_URL)
+    response = requests.get(ROAD_TYPE_MUNI_PATH)
+    json_data = response.json()
     
-    # Limpieza: Eliminamos espacios en nombres y estandarizamos
-    df_impact.columns = df_impact.columns.str.strip()
+    if isinstance(json_data, dict) and "features" in json_data:
+        records = [feat["properties"] for feat in json_data["features"]]
+        df_road_type = pd.DataFrame(records)
+    else:
+        df_road_type = pd.DataFrame(json_data)
+        
+    for col in ['pre_date', 'start_date', 'oper_date']:
+        gdf_roads[col] = pd.to_datetime(gdf_roads[col], errors='coerce', dayfirst=True)
+    gdf_roads['oper_year'] = gdf_roads['oper_date'].dt.year
     
-    # NOTA: Asegúrate de que estas columnas existan en el nuevo CSV. 
-    # Si el CSV tiene otros nombres, cámbialos aquí:
-    # Ejemplo: si la columna de grupo se llama 'Grupo', renómbrala así:
-    # df_impact = df_impact.rename(columns={'Grupo': 'Grupo_Detectado'})
+    if gdf_muni.crs != gdf_roads.crs:
+        gdf_muni = gdf_muni.to_crs(gdf_roads.crs)
+        
+    muni_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_muni.columns else gdf_muni.columns[0]
+    df_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in df_road_type.columns else df_road_type.columns[0]
     
-    return gdf_roads, gdf_muni, df_road_type, df_impact
+    gdf_muni[muni_key] = gdf_muni[muni_key].astype(str).str.strip()
+    df_road_type[df_key] = df_road_type[df_key].astype(str).str.strip()
+    
+    df_road_type = df_road_type.rename(columns={df_key: 'muni_code_match', 'Id_type': 'id_type'})
+    
+    df_road_type['is_doble'] = df_road_type['id_type'].str.lower().str.contains('doble|dual|2', na=False)
+    df_road_type = df_road_type.sort_values(by='is_doble', ascending=False)
+    df_road_type_clean = df_road_type[['muni_code_match', 'id_type']].drop_duplicates(subset=['muni_code_match'])
+    
+    gdf_muni = gdf_muni.merge(df_road_type_clean, left_on=muni_key, right_on='muni_code_match', how='left')
+    gdf_muni['id_type'] = gdf_muni['id_type'].fillna('Sin vías')
+        
+    return gdf_roads, gdf_muni, df_road_type
 
-# Ejecución de carga
+@st.cache_data
+def load_impact_dataset():
+    impact_url = f"{GITHUB_RAW_BASE}/colombia_infrastructure_impact_dataset.csv"
+    try:
+        return pd.read_csv(impact_url)
+    except Exception as e:
+        raise RuntimeError(f"Error loading impact dataset: {e}")
+
 try:
-    gdf_compiled, gdf_municipalities, df_muni_road_type, df_impact = load_data()
+    gdf_compiled, gdf_municipalities, df_muni_road_type = load_data()
+    df_impact = load_impact_dataset()
 except Exception as e:
-    st.error(f"Error crítico cargando datasets: {e}")
+    st.error(f"Critical Error: {e}")
     st.stop()
+
+TOTAL_MUNI_COUNT = len(gdf_municipalities)
+ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
+TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
+
+def absolute_value_format(val, allvals):
+    import numpy as np
+    a = int(np.round(val/100.*sum(allvals)))
+    return f"{a:d} Muni."
 
 # ==============================================================================
 # SECTION 3: FILTER CONTROLS DICTIONARY GENERATION
@@ -99,43 +139,87 @@ st.markdown(
 # ==============================================================================
 col_control, col_map, col_right = st.columns([20, 55, 25])
 
-276; font-size: 15px; line-height: 1.4;'>Comparativa econométrica entre municipios tratados y grupos de control mediante tendencias temporales (log-mean).</div>", unsafe_allow_html=True)
-
 # ==============================================================================
 # SECTION 6: SIDE PANEL CONTROLS
 # ==============================================================================
 with col_control:
-    # ... (resto del código del main_menu) ...
+    st.markdown("### Main Menu")
+    main_menu = st.selectbox(
+        "Select View Module:",
+        options=["1. Colombia Roads", "2. Municipalities with Projects", "3. Municipality Data Exploration"]
+    )
     
-    if main_menu == "4. Impact vs Control Analysis":
-        st.markdown("### Dynamic Filters")
-        
-        # Depuración rápida si falla: muestra las columnas disponibles
-        # st.write(df_impact.columns) 
-        
-        # Validamos nombres de columnas esperados en merged_colombia_data.csv
-        # Ajusta 'Grupo_Detectado' y 'Municipality_Name_DANE' si el CSV usa otros nombres
-        if 'Grupo_Detectado' in df_impact.columns:
-            proj_list = sorted([g for g in df_impact['Grupo_Detectado'].dropna().unique() if g != 'Sin Grupo'])
-            sel_proj = st.selectbox("Proyecto (Tratamiento):", options=proj_list)
-        else:
-            st.error("La columna 'Grupo_Detectado' no fue encontrada en el CSV.")
-            sel_proj = None
+    st.markdown("---")
+    st.markdown("### Dynamic Filters")
 
-        if 'Municipality_Name_DANE' in df_impact.columns:
-            all_munis = sorted(df_impact['Municipality_Name_DANE'].dropna().unique())
-            sel_munis = st.multiselect("Municipios (Control):", options=all_munis)
-        else:
-            sel_munis = []
+    if main_menu == "1. Colombia Roads":
+        st.markdown("**Layer Visibility Settings:**")
+        show_any_roads = st.checkbox("Show Municipalities with Roads", value=True)
+        show_doble_roads = st.checkbox("Show Dual Carriageways (Doble)", value=True)
 
-        y_min = st.number_input("Año Inicio", value=2000, min_value=1990, max_value=2025)
-        y_max = st.number_input("Año Fin", value=2020, min_value=1990, max_value=2025)
+    elif main_menu == "2. Municipalities with Projects":
+        filter_mode = st.radio("Filter Analysis By:", ['Project', 'Year'], horizontal=True)
+        val_proj, val_year = "All", "All"
+        is_project_mode = (filter_mode == 'Project')
+
+        if is_project_mode:
+            val_proj = st.selectbox('Select Project:', options=unique_projects, key="proj_select")
+        else:
+            val_year = st.selectbox('Select Operation Year:', options=years_list, key="year_select")
+
+        filtered_roads = gdf_compiled.copy()
+        if is_project_mode:
+            if val_proj != 'All':
+                filtered_roads = filtered_roads[filtered_roads['PROYECTO'] == val_proj]
+        else:
+            if val_year != 'All':
+                filtered_roads = filtered_roads[filtered_roads['oper_year'] == val_year]
+
+        gdf_complete = filtered_roads.dropna(subset=['pre_date', 'start_date', 'oper_date'])
+        impacted_muni = gpd.GeoDataFrame()
+        muni_list_data = pd.DataFrame()
+
+        if not gdf_complete.empty:
+            hits = gpd.sjoin(gdf_municipalities, gdf_complete, how="inner", predicate="intersects")
+            if not hits.empty:
+                impacted_muni = gdf_municipalities.loc[hits.index.unique()]
+                muni_list_data = impacted_muni[['Municipality_Code_DANE', 'Municipality_Name_DANE']].drop_duplicates().sort_values('Municipality_Name_DANE')
+
+        selected_count = len(muni_list_data)
+
+        st.markdown(
+            f"""
+            <div style='text-align:center; padding: 10px; background: white; border: 2px solid #1a5276; border-radius: 8px; margin-top: 15px; margin-bottom: 10px; font-family: monospace;'>
+                <span style='font-size: 10px; color: #555; text-transform: uppercase;'>Total Municipalities</span><br>
+                <span style='font-size: 24px; color: #1a5276; font-weight: bold;'>{selected_count}</span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
+    elif main_menu == "3. Municipality Data Exploration":
+        st.markdown(
+            """
+            <div style='background-color: #ebf5fb; color: #2e4053; font-size: 11px; padding: 10px; border-radius: 5px; border-left: 3px solid #3498db;'>
+                Interactive dimensions enabled. Modify variables inside the viewport setup panels directly.
+            </div>
+            """, unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+    st.markdown("### Module Description")
+    if main_menu == "1. Colombia Roads":
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Global analysis of Colombian municipalities targeting active road networks alongside explicit tracking of structural improvements and highway upgrades within these zones.</div>", unsafe_allow_html=True)
+    elif main_menu == "2. Municipalities with Projects":
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Granular analysis of targeted territories hosting specific road network segments fully upgraded and actively in operation, filtered interactively by operational calendar years.</div>", unsafe_allow_html=True)
+    elif main_menu == "3. Municipality Data Exploration":
+        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; font-family: sans-serif; color: #2c3e50; line-height: 1.4;'>Strategic performance evaluation isolating core infrastructure projects displaying optimal econometric projections for rigorous impact evaluations using Difference-in-Differences (DiD) or Synthetic Control methodologies.</div>", unsafe_allow_html=True)
+
 # ==============================================================================
 # SECTION 7: GEOSPATIAL MAP / PLOTLY TRENDS PLOTTING (col_map)
 # ==============================================================================
 with col_map:
-    # --- LÓGICA PARA MAPAS ESTÁTICOS (Módulos 1 y 2) ---
-    if main_menu in ["1. Colombia Roads", "2. Municipalities with Projects"]:
+    if main_menu != "3. Municipality Data Exploration":
         fig_map, ax_map = plt.subplots(figsize=(9, 11))
         gdf_municipalities.plot(ax=ax_map, facecolor='#fdfdfd', edgecolor='black', linewidth=0.15)
         
@@ -144,6 +228,7 @@ with col_map:
                 muni_with_roads = gdf_municipalities[gdf_municipalities['id_type'] != 'Sin vías']
                 if not muni_with_roads.empty:
                     muni_with_roads.plot(ax=ax_map, facecolor='#f4d03f', edgecolor='black', linewidth=0.2, alpha=0.7)
+            
             if show_doble_roads and 'id_type' in gdf_municipalities.columns:
                 muni_doble = gdf_municipalities[gdf_municipalities['id_type'] == 'Doble']
                 if not muni_doble.empty:
@@ -158,35 +243,78 @@ with col_map:
                 gdf_complete.plot(ax=ax_map, color='#cb4335', linewidth=1.5)
 
         for spine in ax_map.spines.values(): 
-            spine.set_visible(True); spine.set_color('#1a5276'); spine.set_linewidth(2.0)
-        ax_map.set_xticks([]); ax_map.set_yticks([]); ax_map.set_xlim([-79.5, -66.5]); ax_map.set_ylim([-4.5, 13.5])
+            spine.set_visible(True)
+            spine.set_color('#1a5276')
+            spine.set_linewidth(2.0)
+            
+        ax_map.set_xticks([])
+        ax_map.set_yticks([])
+        ax_map.set_xlim([-79.5, -66.5])
+        ax_map.set_ylim([-4.5, 13.5])
         st.pyplot(fig_map, use_container_width=True)
-
-    # --- LÓGICA PARA EXPLORACIÓN DE DATOS (Módulo 3) ---
-    elif main_menu == "3. Municipality Data Exploration":
-        # ... [Mantiene tu lógica existente de categories_map y plot de exploración] ...
-        # (Se omite para brevedad, integra tu bloque actual aquí)
-        pass 
-
-    # --- NUEVA LÓGICA: IMPACT VS CONTROL (Módulo 4) ---
-    elif main_menu == "4. Impact vs Control Analysis":
-        st.markdown("### Análisis de Impacto: Tratamiento vs Control")
-        # Filtrado de datos según filtros del sidebar
-        df_f = df_impact[(df_impact['year'] >= y_min) & (df_impact['year'] <= y_max)].copy()
-        df_f['log_mean'] = np.log1p(df_f['mean'])
         
-        df_trat = df_f[df_f['Grupo_Detectado'] == sel_proj]
-        df_ctrl = df_f[df_f['Municipality_Name_DANE'].isin(sel_munis)] if sel_munis else df_f[df_f['Grupo_Detectado'] == 'Sin Grupo']
+    else:
+        # --- SECCIÓN 3: EXPLORACIÓN DE DATOS CON PLOTLY ---
+        categories_map = {
+            'Education': ['s11_total', 'alumn_total', 'docen_total'],
+            'Services and Infrastructure': ['tacued', 'turbacued', 'truracued', 'talcan'],
+            'Fiscal and Impact': ['inv_total', 'TMI', 'y_total', 'y_corr']
+        }
+        all_variables_map = {
+            's11_total': 'Saber11 Standardized Score', 'alumn_total': 'Total Enrolled Students', 'docen_total': 'Total Active Teachers',
+            'tacued': 'Water Access Coverage (Total)', 'turbacued': 'Urban Water Coverage', 'truracued': 'Rural Water Coverage', 'talcan': 'Sewage Infrastructure Coverage',
+            'inv_total': 'Total Public Investment', 'TMI': 'Infant Mortality Rate', 'y_total': 'Total Municipal Revenues', 'y_corr': 'Current Operating Revenues'
+        }
+        mun_color_pairs = [
+            ('#1A5276', '#5DADE2'), ('#1E8449', '#58D68D'), ('#A93226', '#E74C3C'), 
+            ('#7D3C98', '#BB8FCE'), ('#B05C00', '#F39C12'), ('#2C3E50', '#7F8C8D')
+        ]
 
-        c_left, c_right = st.columns(2)
-        with c_left:
-            fig_l = px.line(df_trat.groupby('year')['log_mean'].mean().reset_index(), 
-                           x='year', y='log_mean', title="Proyectos (Tratamiento)", template="plotly_white")
-            st.plotly_chart(fig_l, use_container_width=True)
-        with c_right:
-            fig_r = px.line(df_ctrl.groupby('year')['log_mean'].mean().reset_index(), 
-                           x='year', y='log_mean', title="Selección de Control", template="plotly_white")
-            st.plotly_chart(fig_r, use_container_width=True)
+        df_filtered = df_impact.copy()
+        def assign_group(code):
+            for g_name, meta in project_groups_mapping.items():
+                if int(code) in meta["codes"]: return g_name
+            return None
+        df_filtered['Project_Group'] = df_filtered['Municipality_Code_Dane'].apply(assign_group)
+        df_filtered = df_filtered.dropna(subset=['Project_Group']).copy()
+        df_filtered['ano'] = df_filtered['ano'].astype(int)
+
+        st.markdown("### Socioeconomic Development Indicators")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            selected_project = st.selectbox("1. Core Strategic Highway Corridor:", options=list(project_groups_mapping.keys()))
+        with c2:
+            selected_category = st.selectbox("2. Analytical Dimension:", options=list(categories_map.keys()))
+        with c3:
+            available_cols = categories_map[selected_category]
+            selected_var_code = st.selectbox("3. Granular Metric Target:", options=available_cols, format_func=lambda x: all_variables_map[x])
+
+        df_plot = df_filtered[df_filtered['Project_Group'] == selected_project].copy()
+        unique_muns = df_plot['Municipality_Code_Dane'].unique()
+        var_label_en = all_variables_map[selected_var_code]
+
+        fig = go.Figure()
+        for idx, mun_code in enumerate(unique_muns):
+            df_mun = df_plot[df_plot['Municipality_Code_Dane'] == mun_code].sort_values(by='ano')
+            if df_mun[selected_var_code].isna().all(): continue
+            
+            s_col, e_col = mun_color_pairs[idx % len(mun_color_pairs)]
+            colors_sampled = px.colors.sample_colorscale([s_col, e_col], [0.5])
+            
+            fig.add_trace(go.Scatter(
+                x=df_mun['ano'], y=df_mun[selected_var_code], mode='lines+markers',
+                name=f'Muni DANE {mun_code}', line=dict(color=colors_sampled[0], width=2.5),
+                hovertemplate=f'<b>Year</b>: %{{x}}<br><b>{var_label_en}</b>: %{{y:.2f}}<extra></extra>'
+            ))
+
+        fig.update_layout(
+            title=f"Evolution Trend: {var_label_en} ({selected_project})", xaxis_title="Year", yaxis_title=var_label_en,
+            hovermode='x unified', template="plotly_white", height=520, margin=dict(t=60, b=30, l=40, r=40)
+        )
+        fig.update_xaxes(tickformat=".0f", dtick=1, gridcolor="#F2F4F4")
+        fig.update_yaxes(gridcolor="#F2F4F4")
+        st.plotly_chart(fig, use_container_width=True)
+
 # ==============================================================================
 # SECTION 8: RIGHT PANEL VISUALIZATIONS & CHARTS (col_right)
 # ==============================================================================
