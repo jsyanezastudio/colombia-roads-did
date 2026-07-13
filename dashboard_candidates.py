@@ -17,73 +17,32 @@ st.set_page_config(
 # ==============================================================================
 # SECTION 2: DATA LOADING & OPTIMIZATION (CACHING)
 # ==============================================================================
-GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/main"
-GEOJSON_PATH = f"{GITHUB_RAW_BASE}/roads_time_municipalities.json"
-MUNICIPALITIES_PATH = f"{GITHUB_RAW_BASE}/colombia_municipalities_codes.geojson"
-ROAD_TYPE_MUNI_PATH = f"{GITHUB_RAW_BASE}/municipalities_by_road_type.json"
-IMPACT_DATA_URL = f"{GITHUB_RAW_BASE}/colombia_infrastructure_impact_dataset.csv"
+# URL actualizada al archivo real
+IMPACT_DATA_URL = "https://raw.githubusercontent.com/jsyanezastudio/colombia-roads-did/refs/heads/main/merged_colombia_data.csv"
 
 @st.cache_data
 def load_data():
-    # 1. Carga de datos geoespaciales y tipos de vía
-    gdf_roads = gpd.read_file(GEOJSON_PATH)
-    gdf_muni = gpd.read_file(MUNICIPALITIES_PATH)
+    # ... (carga de gdf_roads y gdf_muni original) ...
     
-    response = requests.get(ROAD_TYPE_MUNI_PATH)
-    json_data = response.json()
-    
-    if isinstance(json_data, dict) and "features" in json_data:
-        records = [feat["properties"] for feat in json_data["features"]]
-        df_road_type = pd.DataFrame(records)
-    else:
-        df_road_type = pd.DataFrame(json_data)
-        
-    for col in ['pre_date', 'start_date', 'oper_date']:
-        gdf_roads[col] = pd.to_datetime(gdf_roads[col], errors='coerce', dayfirst=True)
-    gdf_roads['oper_year'] = gdf_roads['oper_date'].dt.year
-    
-    if gdf_muni.crs != gdf_roads.crs:
-        gdf_muni = gdf_muni.to_crs(gdf_roads.crs)
-        
-    muni_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in gdf_muni.columns else gdf_muni.columns[0]
-    df_key = 'Municipality_Code_DANE' if 'Municipality_Code_DANE' in df_road_type.columns else df_road_type.columns[0]
-    
-    gdf_muni[muni_key] = gdf_muni[muni_key].astype(str).str.strip()
-    df_road_type[df_key] = df_road_type[df_key].astype(str).str.strip()
-    
-    df_road_type = df_road_type.rename(columns={df_key: 'muni_code_match', 'Id_type': 'id_type'})
-    
-    df_road_type['is_doble'] = df_road_type['id_type'].str.lower().str.contains('doble|dual|2', na=False)
-    df_road_type = df_road_type.sort_values(by='is_doble', ascending=False)
-    df_road_type_clean = df_road_type[['muni_code_match', 'id_type']].drop_duplicates(subset=['muni_code_match'])
-    
-    gdf_muni = gdf_muni.merge(df_road_type_clean, left_on=muni_key, right_on='muni_code_match', how='left')
-    gdf_muni['id_type'] = gdf_muni['id_type'].fillna('Sin vías')
-    
-    # 2. Carga y limpieza del Dataset de Impacto
+    # Carga del nuevo dataset unificado
     df_impact = pd.read_csv(IMPACT_DATA_URL)
-    # Estandarización básica para el módulo de análisis
-    if 'Municipality_Name_DANE' in df_impact.columns:
-        df_impact['Municipality_Name_DANE'] = df_impact['Municipality_Name_DANE'].fillna('Desconocido').astype(str)
-    if 'Grupo_Detectado' in df_impact.columns:
-        df_impact['Grupo_Detectado'] = df_impact['Grupo_Detectado'].fillna('Sin Grupo').astype(str)
-        
+    
+    # Limpieza: Eliminamos espacios en nombres y estandarizamos
+    df_impact.columns = df_impact.columns.str.strip()
+    
+    # NOTA: Asegúrate de que estas columnas existan en el nuevo CSV. 
+    # Si el CSV tiene otros nombres, cámbialos aquí:
+    # Ejemplo: si la columna de grupo se llama 'Grupo', renómbrala así:
+    # df_impact = df_impact.rename(columns={'Grupo': 'Grupo_Detectado'})
+    
     return gdf_roads, gdf_muni, df_road_type, df_impact
 
 # Ejecución de carga
 try:
     gdf_compiled, gdf_municipalities, df_muni_road_type, df_impact = load_data()
 except Exception as e:
-    st.error(f"Critical Error loading data: {e}")
+    st.error(f"Error crítico cargando datasets: {e}")
     st.stop()
-
-TOTAL_MUNI_COUNT = len(gdf_municipalities)
-ALL_ROAD_MUNI_HITS = gpd.sjoin(gdf_municipalities, gdf_compiled, how="inner", predicate="intersects")
-TOTAL_MUNI_WITH_ROADS = len(ALL_ROAD_MUNI_HITS.index.unique())
-
-def absolute_value_format(val, allvals):
-    a = int(np.round(val/100.*sum(allvals)))
-    return f"{a:d} Muni."
 
 # ==============================================================================
 # SECTION 3: FILTER CONTROLS DICTIONARY GENERATION
@@ -140,59 +99,37 @@ st.markdown(
 # ==============================================================================
 col_control, col_map, col_right = st.columns([20, 55, 25])
 
+276; font-size: 15px; line-height: 1.4;'>Comparativa econométrica entre municipios tratados y grupos de control mediante tendencias temporales (log-mean).</div>", unsafe_allow_html=True)
+
 # ==============================================================================
 # SECTION 6: SIDE PANEL CONTROLS
 # ==============================================================================
 with col_control:
-    st.markdown("### Main Menu")
-    main_menu = st.selectbox(
-        "Select View Module:",
-        options=["1. Colombia Roads", 
-        "2. Municipalities with Projects", 
-        "3. Municipality Data Exploration",
-        "4. Impact vs Control Analysis"]
-    )
+    # ... (resto del código del main_menu) ...
     
-    st.markdown("---")
-    st.markdown("### Dynamic Filters")
-
-    if main_menu == "1. Colombia Roads":
-        st.markdown("**Layer Visibility Settings:**")
-        show_any_roads = st.checkbox("Show Municipalities with Roads", value=True)
-        show_doble_roads = st.checkbox("Show Dual Carriageways (Doble)", value=True)
-
-    elif main_menu == "2. Municipalities with Projects":
-        filter_mode = st.radio("Filter Analysis By:", ['Project', 'Year'], horizontal=True)
-        val_proj, val_year = "All", "All"
-        is_project_mode = (filter_mode == 'Project')
-
-        if is_project_mode:
-            val_proj = st.selectbox('Select Project:', options=unique_projects, key="proj_select")
+    if main_menu == "4. Impact vs Control Analysis":
+        st.markdown("### Dynamic Filters")
+        
+        # Depuración rápida si falla: muestra las columnas disponibles
+        # st.write(df_impact.columns) 
+        
+        # Validamos nombres de columnas esperados en merged_colombia_data.csv
+        # Ajusta 'Grupo_Detectado' y 'Municipality_Name_DANE' si el CSV usa otros nombres
+        if 'Grupo_Detectado' in df_impact.columns:
+            proj_list = sorted([g for g in df_impact['Grupo_Detectado'].dropna().unique() if g != 'Sin Grupo'])
+            sel_proj = st.selectbox("Proyecto (Tratamiento):", options=proj_list)
         else:
-            val_year = st.selectbox('Select Operation Year:', options=years_list, key="year_select")
+            st.error("La columna 'Grupo_Detectado' no fue encontrada en el CSV.")
+            sel_proj = None
 
-        # ... (Mantén tu lógica de filtrado de roads actual aquí) ...
-        filtered_roads = gdf_compiled.copy()
-        # ... (resto de tu lógica de cálculo de impacted_muni) ...
+        if 'Municipality_Name_DANE' in df_impact.columns:
+            all_munis = sorted(df_impact['Municipality_Name_DANE'].dropna().unique())
+            sel_munis = st.multiselect("Municipios (Control):", options=all_munis)
+        else:
+            sel_munis = []
 
-    elif main_menu == "4. Impact vs Control Analysis":
-        proj_list = sorted([g for g in df_impact['Grupo_Detectado'].unique() if g != 'Sin Grupo'])
-        sel_proj = st.selectbox("Proyecto (Tratamiento):", options=proj_list)
-        all_munis = sorted(df_impact['Municipality_Name_DANE'].unique())
-        sel_munis = st.multiselect("Municipios (Control):", options=all_munis)
-        y_min = st.number_input("Año Inicio", value=1992)
-        y_max = st.number_input("Año Fin", value=2022)
-
-    st.markdown("---")
-    st.markdown("### Module Description")
-    if main_menu == "1. Colombia Roads":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; line-height: 1.4;'>Global analysis of Colombian municipalities targeting active road networks.</div>", unsafe_allow_html=True)
-    elif main_menu == "2. Municipalities with Projects":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; line-height: 1.4;'>Granular analysis of territories hosting specific upgraded road segments.</div>", unsafe_allow_html=True)
-    elif main_menu == "3. Municipality Data Exploration":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; line-height: 1.4;'>Strategic performance evaluation isolating core infrastructure projects.</div>", unsafe_allow_html=True)
-    elif main_menu == "4. Impact vs Control Analysis":
-        st.markdown("<div style='background-color: #f8f9f9; padding: 12px; border-left: 4px solid #1a5276; font-size: 15px; line-height: 1.4;'>Comparativa econométrica entre municipios tratados y grupos de control mediante tendencias temporales (log-mean).</div>", unsafe_allow_html=True)
+        y_min = st.number_input("Año Inicio", value=2000, min_value=1990, max_value=2025)
+        y_max = st.number_input("Año Fin", value=2020, min_value=1990, max_value=2025)
 # ==============================================================================
 # SECTION 7: GEOSPATIAL MAP / PLOTLY TRENDS PLOTTING (col_map)
 # ==============================================================================
